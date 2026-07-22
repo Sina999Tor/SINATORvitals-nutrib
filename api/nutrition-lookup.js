@@ -141,41 +141,115 @@ function slugify(query) {
     .replace(/^-+|-+$/g, '');
 }
 
+// KT vkládá mezi Angular {{ }} placeholder a vyrenderovanou hodnotu často HTML
+// komentáře nebo tagy (prerender markup). Přísný "žádný znak mezi labelem a
+// číslem" regex proto na reálných stránkách často selže, i když stránka i
+// hodnoty v ní jsou v pořádku. Místo toho vezmeme okno textu za labelem,
+// odstraníme z něj tagy/komentáře a teprve v očištěném textu hledáme číslo -
+// to je odolné vůči drobným změnám markupu.
+function extractNumberAfterKtLabel(html, label, windowSize) {
+  const idx = html.indexOf(label);
+  if (idx === -1) return null;
+  const slice = html.slice(idx + label.length, idx + label.length + (windowSize || 80));
+  const text = slice.replace(/<!--[\s\S]*?-->/g, '').replace(/<[^>]+>/g, '').replace(/&nbsp;/g, ' ');
+  const m = /(\d+(?:[.,]\d+)?)/.exec(text);
+  if (!m) return null;
+  return parseFloat(m[1].replace(',', '.'));
+}
+
 function extractFromKtHtml(html) {
-  const energyM = /data\.foodstuff\.energy\}\}\s*([\d\s]+)\s*kcal/i.exec(html);
-  const proteinM = /data\.foodstuff\.protein\}\}\s*([\d.,]+)\s*g/i.exec(html);
-  const carbsM = /data\.foodstuff\.carbohydrate\}\}\s*([\d.,]+)\s*g/i.exec(html);
-  const fatM = /data\.foodstuff\.fat\}\}\s*([\d.,]+)\s*g/i.exec(html);
-  if (!energyM) return null;
+  const kcal = extractNumberAfterKtLabel(html, 'data.foodstuff.energy}}', 60);
+  const protein = extractNumberAfterKtLabel(html, 'data.foodstuff.protein}}', 60);
+  const carbs = extractNumberAfterKtLabel(html, 'data.foodstuff.carbohydrate}}', 60);
+  const fat = extractNumberAfterKtLabel(html, 'data.foodstuff.fat}}', 60);
+  if (kcal == null) return null;
   const titleM = /<title>([^<]*)<\/title>/i.exec(html);
   let matchedName = titleM ? decodeHtmlEntities(titleM[1]) : '';
   matchedName = matchedName.split(' - kalorie')[0].split(' | ')[0].trim();
   return {
-    kcal: Math.round(parseFloat(energyM[1].replace(/\s/g, ''))),
-    protein: proteinM ? parseFloat(proteinM[1].replace(',', '.')) : 0,
-    carbs: carbsM ? parseFloat(carbsM[1].replace(',', '.')) : 0,
-    fat: fatM ? parseFloat(fatM[1].replace(',', '.')) : 0,
+    kcal: Math.round(kcal),
+    protein: protein != null ? protein : 0,
+    carbs: carbs != null ? carbs : 0,
+    fat: fat != null ? fat : 0,
     matchedName: matchedName || null
   };
+}
+
+// Vrátí VŠECHNY odkazy na /potraviny/ z výsledků DuckDuckGo (ne jen první),
+// s názvem potraviny odvozeným z odkazu - používá se pro "did you mean" seznam
+// a pro živý našeptávač v UI (aby se vybíral přesný název, jaký na KT existuje).
+function extractKtLinksFromDdg(html) {
+  const out = [];
+  const seen = {};
+  const anchorRe = /<a[^>]+class="result__a"[^>]+href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/gi;
+  let m;
+  while ((m = anchorRe.exec(html))) {
+    let href = m[1];
+    const uddgM = /uddg=([^&]+)/.exec(href);
+    const finalUrl = uddgM ? decodeURIComponent(uddgM[1]) : href;
+    if (!/kaloricketabulky\.cz\/potraviny\//.test(finalUrl)) continue;
+    const slugM = /\/potraviny\/([^/?#]+)/.exec(finalUrl);
+    if (!slugM) continue;
+    const slug = slugM[1];
+    if (seen[slug]) continue;
+    seen[slug] = true;
+    const rawName = decodeHtmlEntities(m[2].replace(/<[^>]+>/g, '').trim());
+    out.push({ slug: slug, name: rawName || slug.replace(/-/g, ' ') });
+  }
+  return out;
 }
 
 async function findKtUrlViaDuckDuckGo(query) {
   const searchUrl = 'https://html.duckduckgo.com/html/?q=' +
     encodeURIComponent('site:kaloricketabulky.cz/potraviny ' + query);
   const res = await fetchText(searchUrl, 12000);
-  if (!res.ok) return { url: null, debug: 'DuckDuckGo HTTP ' + res.status };
-  const linkRe = /<a[^>]+class="result__a"[^>]+href="([^"]+)"/i;
-  let m = linkRe.exec(res.html);
-  let href = m ? m[1] : null;
-  if (!href) {
-    const generic = /href="([^"]*kaloricketabulky\.cz%2Fpotraviny%2F[^"&]*|[^"]*kaloricketabulky\.cz\/potraviny\/[^"?&]*)"/i.exec(res.html);
-    href = generic ? generic[1] : null;
+  if (!res.ok) return { url: null, links: [], debug: 'DuckDuckGo HTTP ' + res.status };
+  const links = extractKtLinksFromDdg(res.html);
+  if (!links.length) return { url: null, links: [], debug: 'DuckDuckGo HTTP ' + res.status + ', 0 odkazů (' + res.html.length + ' znaků odpovědi)' };
+  return { url: 'https://www.kaloricketabulky.cz/potraviny/' + links[0].slug, links: links, debug: null };
+}
+
+// Vrátí seznam kandidátů (název + slug) pro živý našeptávač v UI - nejprve
+// zkusí přímý slug z dotazu, pak doplní o výsledky z DuckDuckGo, ať uživatel
+// vidí přesné názvy tak, jak je má KT v databázi, a nemusí spoléhat na hádání.
+async function suggestKalorickeTabulky(query) {
+  const q = String(query || '').trim();
+  if (q.length < 2) return { success: true, candidates: [] };
+
+  const candidates = [];
+  const seenSlug = {};
+  const addCandidate = function (slug, name) {
+    if (!slug || seenSlug[slug]) return;
+    seenSlug[slug] = true;
+    candidates.push({ slug: slug, name: name || slug.replace(/-/g, ' ') });
+  };
+
+  const directSlug = slugify(q);
+  if (directSlug) {
+    const directRes = await fetchText('https://www.kaloricketabulky.cz/potraviny/' + directSlug, 8000);
+    if (directRes.ok) {
+      const data = extractFromKtHtml(directRes.html);
+      if (data) addCandidate(directSlug, data.matchedName || q);
+    }
   }
-  if (!href) return { url: null, debug: 'DuckDuckGo HTTP ' + res.status + ', 0 odkazů (' + res.html.length + ' znaků odpovědi)' };
-  const uddgM = /uddg=([^&]+)/.exec(href);
-  const finalUrl = uddgM ? decodeURIComponent(uddgM[1]) : href;
-  if (!/kaloricketabulky\.cz\/potraviny\//.test(finalUrl)) return { url: null, debug: 'nalezený odkaz nevede na kaloricketabulky.cz/potraviny' };
-  return { url: finalUrl, debug: null };
+
+  const ddg = await findKtUrlViaDuckDuckGo(q);
+  (ddg.links || []).forEach(function (l) { addCandidate(l.slug, l.name); });
+
+  return { success: true, candidates: candidates.slice(0, 6) };
+}
+
+// Přímý dotaz na konkrétní slug (bez fuzzy hledání) - používá se, když
+// uživatel vybral položku z živého našeptávače, takže víme přesný slug a
+// jméno musí sedět 1:1 s tím, co je na KT.
+async function lookupKalorickeTabulkyBySlug(slug) {
+  const s = String(slug || '').trim();
+  if (!s) return { success: false, message: 'Chybí slug potraviny.' };
+  const res = await fetchText('https://www.kaloricketabulky.cz/potraviny/' + s, 12000);
+  if (!res.ok) return { success: false, message: 'Nepodařilo se načíst potravinu z Kalorických tabulek (HTTP ' + res.status + ').' };
+  const data = extractFromKtHtml(res.html);
+  if (!data) return { success: false, message: 'Stránka nalezena, ale hodnoty se v HTML nenašly.' };
+  return Object.assign({ success: true, source: 'KalorickéTabulky.cz', per: '100 g' }, data);
 }
 
 async function lookupKalorickeTabulky(query) {
@@ -215,6 +289,17 @@ export default async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store');
   const source = (req.query.source || '').toString();
   const q = (req.query.q || '').toString();
+  const slug = (req.query.slug || '').toString();
+
+  if (source === 'kalorickeTabulky' && slug.trim()) {
+    try {
+      const result = await lookupKalorickeTabulkyBySlug(slug);
+      res.status(200).json(result);
+    } catch (e) {
+      res.status(200).json({ success: false, message: 'Nastala chyba při vyhledávání: ' + String(e && e.message || e) });
+    }
+    return;
+  }
 
   if (!q.trim()) {
     res.status(400).json({ success: false, message: 'Chybí parametr q (název potraviny).' });
@@ -227,6 +312,8 @@ export default async function handler(req, res) {
       result = await lookupNutriDatabaze(q);
     } else if (source === 'kalorickeTabulky') {
       result = await lookupKalorickeTabulky(q);
+    } else if (source === 'kalorickeTabulkySuggest') {
+      result = await suggestKalorickeTabulky(q);
     } else {
       result = { success: false, message: 'Neznámý zdroj.' };
     }
