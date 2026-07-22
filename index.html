@@ -2393,6 +2393,11 @@ function attachMainEvents(){
         var descEl = document.getElementById('food-desc');
         var query = ((nameEl && nameEl.value.trim()) || (descEl && descEl.value.trim()) || '').trim();
         if(!query){ state.foodLookupError='Napiš prosím název jídla.'; state.foodLookupNote=''; render(); return; }
+        // zachovat rozepsané hodnoty ve state, ať je re-render (loading/chyba) nesmaže
+        state.foodDraft = Object.assign({}, state.foodDraft, {
+          description: descEl ? descEl.value : (state.foodDraft && state.foodDraft.description),
+          name: nameEl && nameEl.value.trim() ? nameEl.value : (state.foodDraft && state.foodDraft.name)
+        });
         state.foodLookupLoading = cfg.source;
         state.foodLookupError = '';
         state.foodLookupNote = '';
