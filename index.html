@@ -1243,6 +1243,12 @@ function getFoodHistorySuggestions(query){
   items.sort(function(a,b){ return (b.time||'').localeCompare(a.time||''); });
   return items.slice(0,5);
 }
+function searchKtSuggestions(query){
+  return fetch('/api/nutrition-lookup?source=kalorickeTabulkySuggest&q='+encodeURIComponent(query))
+    .then(function(res){ return res.json(); })
+    .then(function(data){ return (data && data.candidates) || []; })
+    .catch(function(){ return []; });
+}
 function searchOpenFoodFactsText(query){
   var url = 'https://world.openfoodfacts.org/cgi/search.pl?search_terms='+encodeURIComponent(query)+'&search_simple=1&action=process&json=1&page_size=6&fields=product_name,generic_name,nutriments,quantity,categories_tags,categories';
   return fetch(url).then(function(res){ if(!res.ok) throw new Error('Vyhledávání se nezdařilo.'); return res.json(); }).then(function(data){
@@ -2541,7 +2547,8 @@ function attachMainEvents(){
         foodDescSuggBox.style.display='none';
         foodDescSuggBox.innerHTML='';
       };
-      var renderDescSuggestions = function(historyItems, offItems, loadingOff){
+      var renderDescSuggestions = function(historyItems, offItems, loadingOff, ktItems, loadingKt, ktFillingSlug){
+        ktItems = ktItems || []; loadingKt = !!loadingKt;
         var html = '';
         historyItems.forEach(function(item){
           html += '<div class="desc-suggestion-item" data-src="history" data-name="'+esc(item.name)+'" data-kcal="'+(item.kcal||0)+'" data-protein="'+(item.protein||0)+'" data-carbs="'+(item.carbs||0)+'" data-fat="'+(item.fat||0)+'" data-alcohol="'+(item.alcohol||0)+'" data-volume="'+(item.volumeMl!=null?item.volumeMl:'')+'" data-abv="'+(item.abv||'')+'">'+
@@ -2549,6 +2556,16 @@ function attachMainEvents(){
             '<div style="display:flex;align-items:center;gap:8px;flex-shrink:0"><span class="desc-suggestion-tag">už jsi jedl(a)</span><span class="desc-suggestion-meta">'+Math.round(item.kcal||0)+' kcal</span></div>'+
           '</div>';
         });
+        ktItems.forEach(function(item){
+          var isFilling = ktFillingSlug===item.slug;
+          html += '<div class="desc-suggestion-item" data-src="kt" data-slug="'+esc(item.slug)+'" data-name="'+esc(item.name)+'">'+
+            '<div class="desc-suggestion-name">'+esc(item.name)+'</div>'+
+            (isFilling ? '<span class="ai-spinner" style="width:11px;height:11px;flex-shrink:0"></span>' : '<span class="desc-suggestion-tag">Kalorické tabulky</span>')+
+          '</div>';
+        });
+        if(loadingKt){
+          html += '<div class="desc-suggestion-loading"><span class="ai-spinner" style="width:11px;height:11px;margin-right:6px"></span>Hledám na Kalorických tabulkách…</div>';
+        }
         offItems.forEach(function(item){
           html += '<div class="desc-suggestion-item" data-src="off" data-name="'+esc(item.name)+'" data-kcal100="'+item.kcal100+'" data-protein100="'+item.protein100+'" data-carbs100="'+item.carbs100+'" data-fat100="'+item.fat100+'" data-alcohol100="'+(item.alcohol100||0)+'" data-qty="'+item.defaultQty+'" data-unit="'+item.defaultUnit+'">'+
             '<div class="desc-suggestion-name">'+esc(item.name)+'</div>'+
@@ -2578,6 +2595,29 @@ function attachMainEvents(){
                 abv: el.getAttribute('data-abv') ? Number(el.getAttribute('data-abv')) : 0,
                 alcoholEstimated: false
               });
+              state.foodAiError='';
+              render();
+            } else if(src==='kt'){
+              var slug = el.getAttribute('data-slug');
+              // znovu vykreslit se spinnerem u vybrané položky, ostatní necháme být
+              renderDescSuggestions(historyItems, offItems, loadingOff, ktItems, false, slug);
+              fetch('/api/nutrition-lookup?source=kalorickeTabulky&slug='+encodeURIComponent(slug))
+                .then(function(res){ return res.json(); })
+                .then(function(data){
+                  if(!data || !data.success){ state.foodAiError = (data && data.message) || 'Načtení z Kalorických tabulek se nezdařilo.'; render(); return; }
+                  var finalName = data.matchedName || name;
+                  state.foodDraft = Object.assign({}, state.foodDraft, {
+                    description: finalName, name: finalName,
+                    kcal: data.kcal, protein: data.protein, carbs: data.carbs, fat: data.fat,
+                    knownFoodMatch:false
+                  });
+                  state.foodAiError='';
+                  closeDescSuggestions();
+                  render();
+                }).catch(function(){
+                  state.foodAiError = 'Načtení z Kalorických tabulek se nezdařilo.';
+                  render();
+                });
             } else {
               var qty = Number(document.getElementById('food-qty').value) || Number(el.getAttribute('data-qty')) || 100;
               var isMl = el.getAttribute('data-unit')==='ml';
@@ -2599,9 +2639,9 @@ function attachMainEvents(){
                 abv: alcoholG>0 ? (Math.round(alcohol100*10)/10) : 0,
                 alcoholEstimated: false
               });
+              state.foodAiError='';
+              render();
             }
-            state.foodAiError='';
-            render();
           });
         });
       };
@@ -2610,16 +2650,19 @@ function attachMainEvents(){
         clearTimeout(descDebounce);
         if(q.length<2){ closeDescSuggestions(); return; }
         var historyItems = getFoodHistorySuggestions(q);
-        renderDescSuggestions(historyItems, [], false);
+        renderDescSuggestions(historyItems, [], false, [], false);
         var myToken = ++descReqToken;
         descDebounce = setTimeout(function(){
-          renderDescSuggestions(historyItems, [], true);
-          searchOpenFoodFactsText(q).then(function(offItems){
+          renderDescSuggestions(historyItems, [], true, [], true);
+          var ktPromise = searchKtSuggestions(q);
+          var offPromise = searchOpenFoodFactsText(q).catch(function(){ return []; });
+          ktPromise.then(function(ktItems){
             if(myToken!==descReqToken) return;
-            renderDescSuggestions(historyItems, offItems, false);
-          }).catch(function(){
-            if(myToken!==descReqToken) return;
-            renderDescSuggestions(historyItems, [], false);
+            renderDescSuggestions(historyItems, [], true, ktItems, false);
+            offPromise.then(function(offItems){
+              if(myToken!==descReqToken) return;
+              renderDescSuggestions(historyItems, offItems, false, ktItems, false);
+            });
           });
         }, 400);
       });
