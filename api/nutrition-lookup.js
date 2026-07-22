@@ -4,6 +4,12 @@
 // se vrátí jen čistá čísla (kcal, bílkoviny, sacharidy, tuky) v JSON.
 
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
+// KT (a spousta jiných SPA webů) posílá plně vyrenderovaný obsah s čísly jen
+// rozpoznaným crawlerům kvůli SEO; běžnému serverovému požadavku (i s
+// "prohlížečovým" UA) může poslat jen prázdnou šablonu. Googlebot UA je
+// legitimní způsob, jak dostat tu samou veřejnou stránku, kterou web sám
+// nabízí k indexaci.
+const CRAWLER_UA = 'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)';
 
 function stripDiacritics(s) {
   return String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '');
@@ -24,13 +30,13 @@ function normalizeForMatch(s) {
   return stripDiacritics(String(s || '').toLowerCase()).replace(/[^a-z0-9]+/g, ' ').trim();
 }
 
-async function fetchText(url, timeoutMs) {
+async function fetchText(url, timeoutMs, ua) {
   const controller = new AbortController();
   const timer = setTimeout(function () { controller.abort(); }, timeoutMs || 8000);
   try {
     const res = await fetch(url, {
       headers: {
-        'User-Agent': UA,
+        'User-Agent': ua || UA,
         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
         'Accept-Language': 'cs-CZ,cs;q=0.9,en;q=0.5',
         'Referer': 'https://www.google.com/'
@@ -45,6 +51,28 @@ async function fetchText(url, timeoutMs) {
     clearTimeout(timer);
     return { ok: false, status: 0, html: '', error: String(e && e.message || e) };
   }
+}
+
+// Stáhne stránku potraviny na KT a zparsuje ji. Nejdřív zkusí běžný UA,
+// a pokud stránka dorazí bez dat (prázdná SPA šablona), zopakuje dotaz s
+// UA Googlebota - u SEO-prerenderovaných webů to bývá rozdíl mezi "nic" a
+// plnými čísly.
+async function fetchAndParseKtPage(url, debugParts, label) {
+  const res1 = await fetchText(url, 12000, UA);
+  if (debugParts) debugParts.push((label || 'stránka') + ': HTTP ' + res1.status);
+  if (res1.ok) {
+    const data1 = extractFromKtHtml(res1.html);
+    if (data1) return data1;
+    if (debugParts) debugParts.push('běžný UA: stránka nalezena, ale hodnoty se v HTML nenašly');
+  }
+  const res2 = await fetchText(url, 12000, CRAWLER_UA);
+  if (debugParts) debugParts.push((label || 'stránka') + ' (Googlebot UA): HTTP ' + res2.status);
+  if (res2.ok) {
+    const data2 = extractFromKtHtml(res2.html);
+    if (data2) return data2;
+    if (debugParts) debugParts.push('Googlebot UA: stránka nalezena, ale hodnoty se v HTML nenašly');
+  }
+  return null;
 }
 
 // Vytáhne první číslo (desetinné, s čárkou i tečkou) po dané textové značce v HTML.
@@ -266,11 +294,8 @@ async function suggestKalorickeTabulky(query) {
 
   const directSlug = slugify(q);
   if (directSlug) {
-    const directRes = await fetchText('https://www.kaloricketabulky.cz/potraviny/' + directSlug, 8000);
-    if (directRes.ok) {
-      const data = extractFromKtHtml(directRes.html);
-      if (data) addCandidate(directSlug, data.matchedName || q);
-    }
+    const data = await fetchAndParseKtPage('https://www.kaloricketabulky.cz/potraviny/' + directSlug);
+    if (data) addCandidate(directSlug, data.matchedName || q);
   }
 
   const found = await findKtUrlViaWebSearch(q);
@@ -285,10 +310,8 @@ async function suggestKalorickeTabulky(query) {
 async function lookupKalorickeTabulkyBySlug(slug) {
   const s = String(slug || '').trim();
   if (!s) return { success: false, message: 'Chybí slug potraviny.' };
-  const res = await fetchText('https://www.kaloricketabulky.cz/potraviny/' + s, 12000);
-  if (!res.ok) return { success: false, message: 'Nepodařilo se načíst potravinu z Kalorických tabulek (HTTP ' + res.status + ').' };
-  const data = extractFromKtHtml(res.html);
-  if (!data) return { success: false, message: 'Stránka nalezena, ale hodnoty se v HTML nenašly.' };
+  const data = await fetchAndParseKtPage('https://www.kaloricketabulky.cz/potraviny/' + s);
+  if (!data) return { success: false, message: 'Nepodařilo se načíst hodnoty pro tuto potravinu z Kalorických tabulek.' };
   return Object.assign({ success: true, source: 'KalorickéTabulky.cz', per: '100 g' }, data);
 }
 
@@ -299,25 +322,15 @@ async function lookupKalorickeTabulky(query) {
   const slug = slugify(q);
   const debugParts = [];
   if (slug) {
-    const directRes = await fetchText('https://www.kaloricketabulky.cz/potraviny/' + slug, 12000);
-    debugParts.push('přímý slug "' + slug + '": HTTP ' + directRes.status);
-    if (directRes.ok) {
-      const data = extractFromKtHtml(directRes.html);
-      if (data) return Object.assign({ success: true, source: 'KalorickéTabulky.cz', per: '100 g' }, data);
-      debugParts.push('stránka nalezena, ale hodnoty se v HTML nenašly');
-    }
+    const data = await fetchAndParseKtPage('https://www.kaloricketabulky.cz/potraviny/' + slug, debugParts, 'přímý slug "' + slug + '"');
+    if (data) return Object.assign({ success: true, source: 'KalorickéTabulky.cz', per: '100 g' }, data);
   }
 
   // fallback: najít správnou stránku přes DuckDuckGo/Bing (bez přesměrování uživatele - hledá server)
   const found = await findKtUrlViaWebSearch(q);
   if (found.url) {
-    const res2 = await fetchText(found.url, 12000);
-    debugParts.push('web search nalezl ' + found.url + ' (HTTP ' + res2.status + ')');
-    if (res2.ok) {
-      const data2 = extractFromKtHtml(res2.html);
-      if (data2) return Object.assign({ success: true, source: 'KalorickéTabulky.cz', per: '100 g' }, data2);
-      debugParts.push('stránka nalezena, ale hodnoty se v HTML nenašly');
-    }
+    const data2 = await fetchAndParseKtPage(found.url, debugParts, 'web search výsledek');
+    if (data2) return Object.assign({ success: true, source: 'KalorickéTabulky.cz', per: '100 g' }, data2);
   } else {
     debugParts.push(found.debug || 'web search fallback bez výsledku');
   }
