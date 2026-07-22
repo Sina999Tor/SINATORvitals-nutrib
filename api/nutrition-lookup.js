@@ -199,19 +199,59 @@ function extractKtLinksFromDdg(html) {
   return out;
 }
 
-async function findKtUrlViaDuckDuckGo(query) {
+async function findKtLinksViaDuckDuckGo(query) {
   const searchUrl = 'https://html.duckduckgo.com/html/?q=' +
     encodeURIComponent('site:kaloricketabulky.cz/potraviny ' + query);
-  const res = await fetchText(searchUrl, 12000);
-  if (!res.ok) return { url: null, links: [], debug: 'DuckDuckGo HTTP ' + res.status };
+  const res = await fetchText(searchUrl, 10000);
+  if (!res.ok) return { links: [], debug: 'DuckDuckGo HTTP ' + res.status };
   const links = extractKtLinksFromDdg(res.html);
-  if (!links.length) return { url: null, links: [], debug: 'DuckDuckGo HTTP ' + res.status + ', 0 odkazů (' + res.html.length + ' znaků odpovědi)' };
-  return { url: 'https://www.kaloricketabulky.cz/potraviny/' + links[0].slug, links: links, debug: null };
+  if (!links.length) return { links: [], debug: 'DuckDuckGo HTTP ' + res.status + ', 0 odkazů (' + res.html.length + ' znaků odpovědi)' };
+  return { links: links, debug: null };
+}
+
+// Bing bývá z datacenterových IP (Vercel) méně náchylný na blokaci než
+// DuckDuckGo, takže slouží jako druhá šance, pokud DDG selže (HTTP 403 apod.).
+function extractKtLinksFromBing(html) {
+  const out = [];
+  const seen = {};
+  const anchorRe = /<h2><a[^>]+href="([^"]+)"[^>]*>([\s\S]*?)<\/a><\/h2>/gi;
+  let m;
+  while ((m = anchorRe.exec(html))) {
+    const href = m[1];
+    if (!/kaloricketabulky\.cz\/potraviny\//.test(href)) continue;
+    const slugM = /\/potraviny\/([^/?#]+)/.exec(href);
+    if (!slugM) continue;
+    const slug = decodeURIComponent(slugM[1]);
+    if (seen[slug]) continue;
+    seen[slug] = true;
+    const rawName = decodeHtmlEntities(m[2].replace(/<[^>]+>/g, '').trim());
+    out.push({ slug: slug, name: rawName || slug.replace(/-/g, ' ') });
+  }
+  return out;
+}
+
+async function findKtLinksViaBing(query) {
+  const searchUrl = 'https://www.bing.com/search?q=' +
+    encodeURIComponent('site:kaloricketabulky.cz/potraviny ' + query);
+  const res = await fetchText(searchUrl, 10000);
+  if (!res.ok) return { links: [], debug: 'Bing HTTP ' + res.status };
+  const links = extractKtLinksFromBing(res.html);
+  if (!links.length) return { links: [], debug: 'Bing HTTP ' + res.status + ', 0 odkazů (' + res.html.length + ' znaků odpovědi)' };
+  return { links: links, debug: null };
+}
+
+async function findKtUrlViaWebSearch(query) {
+  const ddg = await findKtLinksViaDuckDuckGo(query);
+  if (ddg.links.length) return { url: 'https://www.kaloricketabulky.cz/potraviny/' + ddg.links[0].slug, links: ddg.links, debug: null };
+  const bing = await findKtLinksViaBing(query);
+  const debugParts = [ddg.debug, bing.debug].filter(Boolean);
+  if (bing.links.length) return { url: 'https://www.kaloricketabulky.cz/potraviny/' + bing.links[0].slug, links: bing.links, debug: null };
+  return { url: null, links: [], debug: debugParts.join('; ') || 'bez výsledku' };
 }
 
 // Vrátí seznam kandidátů (název + slug) pro živý našeptávač v UI - nejprve
-// zkusí přímý slug z dotazu, pak doplní o výsledky z DuckDuckGo, ať uživatel
-// vidí přesné názvy tak, jak je má KT v databázi, a nemusí spoléhat na hádání.
+// zkusí přímý slug z dotazu, pak doplní o výsledky z DuckDuckGo a Bingu, ať
+// uživatel vidí přesné názvy tak, jak je má KT v databázi.
 async function suggestKalorickeTabulky(query) {
   const q = String(query || '').trim();
   if (q.length < 2) return { success: true, candidates: [] };
@@ -233,10 +273,10 @@ async function suggestKalorickeTabulky(query) {
     }
   }
 
-  const ddg = await findKtUrlViaDuckDuckGo(q);
-  (ddg.links || []).forEach(function (l) { addCandidate(l.slug, l.name); });
+  const found = await findKtUrlViaWebSearch(q);
+  (found.links || []).forEach(function (l) { addCandidate(l.slug, l.name); });
 
-  return { success: true, candidates: candidates.slice(0, 6) };
+  return { success: true, candidates: candidates.slice(0, 6), debug: candidates.length ? null : found.debug };
 }
 
 // Přímý dotaz na konkrétní slug (bez fuzzy hledání) - používá se, když
@@ -268,18 +308,18 @@ async function lookupKalorickeTabulky(query) {
     }
   }
 
-  // fallback: najít správnou stránku přes DuckDuckGo (bez přesměrování uživatele - hledá server)
-  const found = await findKtUrlViaDuckDuckGo(q);
+  // fallback: najít správnou stránku přes DuckDuckGo/Bing (bez přesměrování uživatele - hledá server)
+  const found = await findKtUrlViaWebSearch(q);
   if (found.url) {
     const res2 = await fetchText(found.url, 12000);
-    debugParts.push('DDG nalezl ' + found.url + ' (HTTP ' + res2.status + ')');
+    debugParts.push('web search nalezl ' + found.url + ' (HTTP ' + res2.status + ')');
     if (res2.ok) {
       const data2 = extractFromKtHtml(res2.html);
       if (data2) return Object.assign({ success: true, source: 'KalorickéTabulky.cz', per: '100 g' }, data2);
       debugParts.push('stránka nalezena, ale hodnoty se v HTML nenašly');
     }
   } else {
-    debugParts.push(found.debug || 'DDG fallback bez výsledku');
+    debugParts.push(found.debug || 'web search fallback bez výsledku');
   }
 
   return { success: false, message: 'Na Kalorických tabulkách se "' + q + '" nepodařilo najít. (' + debugParts.join('; ') + ')' };
