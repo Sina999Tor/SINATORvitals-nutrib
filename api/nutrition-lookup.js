@@ -187,12 +187,33 @@ async function fetchViaReader(url, timeoutMs, waitSeconds) {
   }
 }
 
-// Najde číslo, které stojí v textu blízko za daným labelem. Zkouší víc
-// vzorů popořadě - první, co něco najde, vyhrává.
-function findNumberNearLabel(text, labelPatterns) {
-  for (let i = 0; i < labelPatterns.length; i++) {
-    const re = new RegExp(labelPatterns[i] + '[^0-9\\n]{0,40}?(\\d+(?:[.,]\\d+)?)', 'i');
-    const m = re.exec(text);
+// Najde kcal hodnotu ve vykresleném textu. Primárně hledá formát "121 kcal"
+// (číslo bezprostředně před jednotkou - takhle se obvykle zobrazuje hlavní
+// velké číslo na stránce potraviny). Záložně zkusí "Energetická hodnota"
+// následovanou číslem (dovoluje i zalomení řádku mezi labelem a hodnotou).
+function findKcalValue(text) {
+  let m = /(\d+(?:[.,]\d+)?)\s*kcal\b/i.exec(text);
+  if (m) return parseFloat(m[1].replace(',', '.'));
+  m = /Energetick[aá] hodnota[\s\S]{0,60}?(\d+(?:[.,]\d+)?)/i.exec(text);
+  if (m) return parseFloat(m[1].replace(',', '.'));
+  m = /data\.foodstuff\.energy\}\}[^0-9\n]{0,20}?(\d+(?:[.,]\d+)?)/i.exec(text);
+  if (m) return parseFloat(m[1].replace(',', '.'));
+  return null;
+}
+
+// Najde hodnotu makroživiny (bílkoviny/sacharidy/tuky) v gramech. Label a
+// hodnota bývají na stránce odděleny zalomením řádku, proto mezera mezi
+// nimi smí obsahovat i "\n" (na rozdíl od dřívější verze).
+function findGramValue(text, labelPattern, placeholderPattern) {
+  let re = new RegExp(labelPattern + '[\\s\\S]{0,60}?(\\d+(?:[.,]\\d+)?)\\s*g\\b', 'i');
+  let m = re.exec(text);
+  if (m) return parseFloat(m[1].replace(',', '.'));
+  // záložně: hodnota může být bez jednotky "g" hned vedle (jen tabulkové číslo)
+  re = new RegExp(labelPattern + '[\\s\\S]{0,60}?(\\d+(?:[.,]\\d+)?)', 'i');
+  m = re.exec(text);
+  if (m) return parseFloat(m[1].replace(',', '.'));
+  if (placeholderPattern) {
+    m = new RegExp(placeholderPattern + '[^0-9\\n]{0,20}?(\\d+(?:[.,]\\d+)?)', 'i').exec(text);
     if (m) return parseFloat(m[1].replace(',', '.'));
   }
   return null;
@@ -202,14 +223,12 @@ function findNumberNearLabel(text, labelPatterns) {
 // Ověří, že jde skutečně o stránku potraviny (ne přesměrování na kategorii)
 // pomocí řádku "URL Source:", který Reader vrací s finální URL po redirectu.
 //
-// DŮLEŽITÉ: stránka potraviny obsahuje "{{...}}" Angular placeholdery úplně
-// VŽDY, i když je hlavní obsah stránky správně vyrenderovaný - typicky v
-// neaktivních prvcích jako přihlašovací/registrační formulář v hlavičce
-// ({{profile.email}}, {{errors.message}} apod.), které se nikdy nezobrazí,
-// ale v textu stránky zůstávají. Přítomnost {{...}} PROTO NENÍ důvod stránku
-// zahazovat - důležité je najít reálné číslo hned za konkrétním datovým
-// placeholderem (např. "{{data.foodstuff.energy}}121 kcal" - číslo bez
-// mezery hned za "}}"). To je ověřeno na reálné stránce KT.
+// POZNÁMKA: s "X-Engine: browser" Reader stránku plně vyrenderuje, takže
+// Angular "{{...}}" placeholdery obvykle úplně zmizí a zůstanou jen reálné
+// hodnoty (např. "121 kcal", "Bílkoviny 11,5 g") - proto se primárně hledá
+// podle skutečného textu, ne podle placeholderů (ty zůstávají jen jako
+// poslední záložní varianta pro případ, že by render z nějakého důvodu
+// neproběhl úplně).
 function parseKtReaderText(text) {
   if (!text) return null;
 
@@ -217,15 +236,11 @@ function parseKtReaderText(text) {
   const finalUrl = urlSourceM ? urlSourceM[1] : '';
   if (finalUrl && !/\/potraviny\//.test(finalUrl)) return null; // přesměrováno na kategorii = slug neexistuje
 
-  const kcal = findNumberNearLabel(text, [
-    'data\\.foodstuff\\.energy\\}\\}',
-    'Energetick[aá] hodnota[^\\n]{0,25}?kcal',
-    '\\bkcal\\b'
-  ]);
+  const kcal = findKcalValue(text);
   if (kcal == null) return null;
-  const protein = findNumberNearLabel(text, ['data\\.foodstuff\\.protein\\}\\}', 'B[ií]lkovin\\w*']);
-  const carbs = findNumberNearLabel(text, ['data\\.foodstuff\\.carbohydrate\\}\\}', 'Sacharid\\w*']);
-  const fat = findNumberNearLabel(text, ['data\\.foodstuff\\.fat\\}\\}', 'Tuk\\w*']);
+  const protein = findGramValue(text, 'B[ií]lkovin\\w*', 'data\\.foodstuff\\.protein\\}\\}');
+  const carbs = findGramValue(text, 'Sacharid\\w*', 'data\\.foodstuff\\.carbohydrate\\}\\}');
+  const fat = findGramValue(text, 'Tuk\\w*', 'data\\.foodstuff\\.fat\\}\\}');
 
   const titleM = /^Title:\s*(.+)$/im.exec(text);
   let matchedName = titleM ? titleM[1] : '';
@@ -247,9 +262,9 @@ async function fetchAndParseKtPage(slug, debugParts, label) {
   if (!res.ok) return null;
   const data = parseKtReaderText(res.text);
   if (!data && debugParts) {
-    const energyIdx = res.text.indexOf('data.foodstuff.energy');
-    const nearby = energyIdx !== -1 ? res.text.slice(energyIdx, energyIdx + 60).replace(/\s+/g, ' ') : '(placeholder "data.foodstuff.energy" v textu vůbec není)';
-    debugParts.push('stránka nalezena, ale hodnoty se nepodařilo přečíst (' + res.text.length + ' znaků; kolem energie: "' + nearby + '")');
+    const kcalIdx = res.text.search(/kcal/i);
+    const nearby = kcalIdx !== -1 ? res.text.slice(Math.max(0, kcalIdx - 40), kcalIdx + 20).replace(/\s+/g, ' ') : '(slovo "kcal" v textu vůbec není)';
+    debugParts.push('stránka nalezena, ale hodnoty se nepodařilo přečíst (' + res.text.length + ' znaků; kolem "kcal": "' + nearby + '")');
   }
   return data;
 }
