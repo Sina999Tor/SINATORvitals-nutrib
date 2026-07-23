@@ -780,12 +780,14 @@ function foodQtyLabel(f){
 }
 // Přepočet množství+jednotky na "gramový ekvivalent" pro škálování nutričních
 // hodnot uložených jako "na 100 g" (z Kalorických tabulek, NutriDatabáze i
-// Open Food Facts). g/kg/ml/l mají přesný převod; u ostatních jednotek (ks,
-// porce, lžíce, balení, hrnek, plátek) nemáme skutečnou hmotnost, takže se
-// zachovává dosavadní konvence appky - 1 kus dané jednotky ~ 100 g základ,
-// aby škálování dávalo smysl i při počítání "porcí" nahoru/dolů.
+// Open Food Facts). g/kg/ml/l mají přesný převod. U jednotek bez skutečné
+// hmotnosti používáme rozumný orientační odhad typické velikosti (dá se
+// samozřejmě přepnout na "g" a zadat přesně) - "porce" = celý talíř hlavního
+// jídla (~350 g), ne 100 g. "ks" a "balení" necháváme na neutrálních 100 g,
+// protože se to reálně liší kus od kusu (jablko vs. balení sušenek).
+var UNIT_GRAM_ESTIMATE = { porce:350, ks:100, baleni:100, lzice:15, hrnek:250, platek:25 };
 function gramsForQtyUnit(qty, unitKey){
-  var mult = unitKey==='g' ? 1 : unitKey==='kg' ? 1000 : unitKey==='ml' ? 1 : unitKey==='l' ? 1000 : 100;
+  var mult = unitKey==='g' ? 1 : unitKey==='kg' ? 1000 : unitKey==='ml' ? 1 : unitKey==='l' ? 1000 : (UNIT_GRAM_ESTIMATE[unitKey] || 100);
   return qty*mult;
 }
 // Spočítá kcal/protein/carbs/fat pro dané množství+jednotku z uložené
