@@ -419,7 +419,8 @@ var EXERCISES = {
 var state = { profile:null, entries:[], saveError:'', editingProfile:false, confirmReset:false, showExerciseModal:false, exerciseTab:'upper', exerciseDetail:null, showBmiModal:false,
   foodLog:{}, showAddFoodModal:false, foodDraft:null, foodAiLoading:false, foodAiError:'', showAiSettingsModal:false, aiKeys:{gemini:'',groq:'',openrouter:''}, showFoodHistoryModal:false, selectedFoodDate:null,
   foodLookupLoading:null, foodLookupError:'', foodLookupNote:'',
-  foodInputMode:'text', foodPhoto:null, barcodePhoto:null, knownFoods:{}, showAlcoholModal:false, alcoholSearchQuery:'', alcoholAddedName:'', addFoodMealType:null, editingFoodId:null, editingFoodDay:null, calAdjustChoices:{}, dayTypes:{} };
+  foodInputMode:'text', foodPhoto:null, barcodePhoto:null, knownFoods:{}, showAlcoholModal:false, alcoholSearchQuery:'', alcoholAddedName:'', addFoodMealType:null, editingFoodId:null, editingFoodDay:null, calAdjustChoices:{}, dayTypes:{},
+  showRecipeModal:false, recipeDraft:null };
 
 function loadState(){
   try{ state.profile = JSON.parse(localStorage.getItem('bmi_profile')||'null'); }catch(e){ state.profile=null; }
@@ -1870,6 +1871,9 @@ html += '<section class="stat-grid fade-up">'+
   if(state.showFoodHistoryModal){
     html += renderFoodHistoryModal();
   }
+  if(state.showRecipeModal){
+    html += renderRecipeModal();
+  }
   return html;
 }
 
@@ -1904,6 +1908,7 @@ function renderLookupButtons(){
   if(state.foodLookupError){
     html += '<div class="form-error" style="margin-top:6px">'+ICONS.alert+' '+esc(state.foodLookupError)+'</div>';
   }
+  html += '<button type="button" class="btn-secondary" id="food-recipe-btn" style="width:100%;justify-content:center;font-size:12px;padding:9px 6px;margin-top:8px">🍳 Neznámé jídlo? Sestavit recept ze surovin</button>';
   return html;
 }
 
@@ -2077,6 +2082,72 @@ function renderFoodHistoryModal(){
     '<div class="modal" id="food-history-box">'+
       '<div class="modal-header"><div class="card-title" style="margin:0">Historie jídel</div><button class="btn-icon subtle" id="food-history-close-btn" aria-label="Zavřít">'+ICONS.x+'</button></div>'+
       body+
+    '</div>'+
+  '</div>';
+}
+
+// Sečte gramy a nutrienty všech surovin receptu (kcal/protein/carbs/fat pro
+// každou surovinu se počítají z její vlastní "na 100 g" reference a aktuální
+// gramáže, viz macrosFromPer100).
+function recipeTotals(draft){
+  var ings = (draft && draft.ingredients) || [];
+  var t = {grams:0, kcal:0, protein:0, carbs:0, fat:0};
+  ings.forEach(function(ing){
+    var m = macrosFromPer100(ing.per100, ing.qty, 'g');
+    t.grams += ing.qty;
+    t.kcal += m.kcal; t.protein += m.protein; t.carbs += m.carbs; t.fat += m.fat;
+  });
+  return t;
+}
+
+function renderRecipeModal(){
+  var d = state.recipeDraft || (state.recipeDraft = {name:'', servings:4, ingredients:[], ingName:'', ingQty:100, ingLoading:false, ingError:''});
+  var totals = recipeTotals(d);
+  var servings = Number(d.servings)||1;
+  var perServing = servings>0 ? {
+    kcal: Math.round(totals.kcal/servings), protein: Math.round(totals.protein/servings*10)/10,
+    carbs: Math.round(totals.carbs/servings*10)/10, fat: Math.round(totals.fat/servings*10)/10,
+    grams: Math.round(totals.grams/servings)
+  } : null;
+
+  var ingredientsHtml = d.ingredients.length ? d.ingredients.map(function(ing){
+    var m = macrosFromPer100(ing.per100, ing.qty, 'g');
+    return '<div class="desc-suggestion-item" data-recipe-ing-id="'+ing.id+'" style="cursor:default">'+
+      '<div style="flex:1;min-width:0">'+
+        '<div class="desc-suggestion-name">'+esc(ing.matchedName||ing.name)+'</div>'+
+        '<div class="desc-suggestion-meta" id="recipe-ing-meta-'+ing.id+'">'+m.kcal+' kcal · B '+m.protein+' g · S '+m.carbs+' g · T '+m.fat+' g</div>'+
+      '</div>'+
+      '<input class="input" data-recipe-qty-id="'+ing.id+'" type="number" inputmode="decimal" min="1" step="1" value="'+ing.qty+'" style="width:70px;flex-shrink:0;text-align:right;padding:6px 8px">'+
+      '<span style="font-size:11.5px;color:var(--ink-muted);flex-shrink:0">g</span>'+
+      '<button type="button" class="btn-icon subtle" data-recipe-remove-id="'+ing.id+'" aria-label="Odebrat" style="flex-shrink:0">'+ICONS.x+'</button>'+
+    '</div>';
+  }).join('') : '<div style="font-size:12.5px;color:var(--ink-muted);padding:8px 0">Zatím nemáš přidanou žádnou surovinu.</div>';
+
+  return '<div class="modal-overlay" id="recipe-modal-overlay">'+
+    '<div class="modal" id="recipe-modal-box">'+
+      '<div class="modal-header"><div class="card-title" style="margin:0">🍳 Sestavit recept ze surovin</div><button class="btn-icon subtle" id="recipe-modal-close-btn" aria-label="Zavřít">'+ICONS.x+'</button></div>'+
+      '<label class="field"><span>Název receptu</span><input class="input" id="recipe-name" value="'+esc(d.name||'')+'" placeholder="např. Kuřecí nudličky s rýží"></label>'+
+      '<label class="field" style="max-width:160px"><span>Kolik porcí to dělá?</span><input class="input" id="recipe-servings" type="number" inputmode="decimal" min="1" step="1" value="'+servings+'"></label>'+
+      '<div class="ai-result-title" style="margin-top:14px">Přidat surovinu</div>'+
+      '<div class="field-row">'+
+        '<label class="field" style="flex:2"><span>Surovina</span><input class="input" id="recipe-ing-name" autocomplete="off" placeholder="např. kuřecí prsa" value="'+esc(d.ingName||'')+'"></label>'+
+        '<label class="field" style="flex:0 0 90px"><span>Množství (g)</span><input class="input" id="recipe-ing-qty" type="number" inputmode="decimal" min="1" step="1" value="'+(d.ingQty||100)+'"></label>'+
+      '</div>'+
+      '<button type="button" class="btn-secondary" id="recipe-ing-add-btn" style="width:100%;justify-content:center"'+(d.ingLoading?' disabled':'')+'>'+
+        (d.ingLoading ? '<span class="ai-spinner"></span>Hledám na Kalorických tabulkách...' : ICONS.sparkle+' Najít a přidat surovinu')+
+      '</button>'+
+      (d.ingError ? '<div class="form-error" style="margin-top:8px">'+ICONS.alert+' '+esc(d.ingError)+'</div>' : '')+
+      '<div class="ai-result-title" style="margin-top:16px">Suroviny v receptu</div>'+
+      '<div id="recipe-ing-list">'+ingredientsHtml+'</div>'+
+      '<div class="ai-result-card" style="margin-top:14px">'+
+        '<div class="ai-result-title" id="recipe-totals-title">Celkem recept (' + Math.round(totals.grams) + ' g)</div>'+
+        '<div style="font-size:13px" id="recipe-totals-line">'+Math.round(totals.kcal)+' kcal · B '+Math.round(totals.protein*10)/10+' g · S '+Math.round(totals.carbs*10)/10+' g · T '+Math.round(totals.fat*10)/10+' g</div>'+
+        '<div style="font-size:12px;color:var(--ink-muted);margin-top:6px" id="recipe-perserving-line">'+(perServing ? '1 porce (~'+perServing.grams+' g): '+perServing.kcal+' kcal · B '+perServing.protein+' g · S '+perServing.carbs+' g · T '+perServing.fat+' g' : '')+'</div>'+
+      '</div>'+
+      '<div class="field-row" style="margin-top:14px">'+
+        '<button type="button" class="btn-secondary" id="recipe-cancel-btn" style="flex:1;justify-content:center">Zrušit</button>'+
+        '<button type="button" class="btn-primary" id="recipe-confirm-btn" style="flex:1;justify-content:center"'+(!d.name.trim()||!d.ingredients.length?' disabled':'')+'>Potvrdit recept</button>'+
+      '</div>'+
     '</div>'+
   '</div>';
 }
@@ -2316,6 +2387,136 @@ function attachMainEvents(){
     foodHistoryOverlay.addEventListener('click', function(e){ if(e.target===foodHistoryOverlay){ state.showFoodHistoryModal=false; render(); } });
     var foodHistoryCloseBtn = document.getElementById('food-history-close-btn');
     if(foodHistoryCloseBtn) foodHistoryCloseBtn.addEventListener('click', function(){ state.showFoodHistoryModal=false; render(); });
+  }
+
+  var recipeBtn = document.getElementById('food-recipe-btn');
+  if(recipeBtn) recipeBtn.addEventListener('click', function(){
+    if(!state.recipeDraft) state.recipeDraft = {name:'', servings:4, ingredients:[], ingName:'', ingQty:100, ingLoading:false, ingError:''};
+    state.showRecipeModal = true;
+    render();
+  });
+
+  var recipeOverlay = document.getElementById('recipe-modal-overlay');
+  if(recipeOverlay){
+    recipeOverlay.addEventListener('click', function(e){ if(e.target===recipeOverlay){ state.showRecipeModal=false; render(); } });
+    var recipeCloseBtn = document.getElementById('recipe-modal-close-btn');
+    if(recipeCloseBtn) recipeCloseBtn.addEventListener('click', function(){ state.showRecipeModal=false; render(); });
+    var recipeCancelBtn = document.getElementById('recipe-cancel-btn');
+    if(recipeCancelBtn) recipeCancelBtn.addEventListener('click', function(){ state.showRecipeModal=false; render(); });
+
+    var rd = state.recipeDraft;
+
+    // živě přepočítat "Celkem" a "1 porce" bez plného render() (ať psaní počtu porcí nesekne focus)
+    function patchRecipeTotals(){
+      var totals = recipeTotals(rd);
+      var servingsEl = document.getElementById('recipe-servings');
+      var servings = Number(servingsEl ? servingsEl.value : rd.servings) || 1;
+      var titleEl = document.getElementById('recipe-totals-title');
+      var lineEl = document.getElementById('recipe-totals-line');
+      var perEl = document.getElementById('recipe-perserving-line');
+      if(titleEl) titleEl.textContent = 'Celkem recept ('+Math.round(totals.grams)+' g)';
+      if(lineEl) lineEl.textContent = Math.round(totals.kcal)+' kcal · B '+(Math.round(totals.protein*10)/10)+' g · S '+(Math.round(totals.carbs*10)/10)+' g · T '+(Math.round(totals.fat*10)/10)+' g';
+      if(perEl){
+        if(servings>0 && totals.grams>0){
+          var per = {
+            kcal: Math.round(totals.kcal/servings), protein: Math.round(totals.protein/servings*10)/10,
+            carbs: Math.round(totals.carbs/servings*10)/10, fat: Math.round(totals.fat/servings*10)/10,
+            grams: Math.round(totals.grams/servings)
+          };
+          perEl.textContent = '1 porce (~'+per.grams+' g): '+per.kcal+' kcal · B '+per.protein+' g · S '+per.carbs+' g · T '+per.fat+' g';
+        } else perEl.textContent = '';
+      }
+    }
+
+    var recipeNameEl = document.getElementById('recipe-name');
+    if(recipeNameEl) recipeNameEl.addEventListener('input', function(){
+      rd.name = recipeNameEl.value;
+      var confirmBtn = document.getElementById('recipe-confirm-btn');
+      if(confirmBtn) confirmBtn.disabled = !rd.name.trim() || !rd.ingredients.length;
+    });
+
+    var recipeServingsEl = document.getElementById('recipe-servings');
+    if(recipeServingsEl) recipeServingsEl.addEventListener('input', function(){
+      rd.servings = Number(recipeServingsEl.value)||1;
+      patchRecipeTotals();
+    });
+
+    var recipeIngNameEl = document.getElementById('recipe-ing-name');
+    if(recipeIngNameEl) recipeIngNameEl.addEventListener('input', function(){ rd.ingName = recipeIngNameEl.value; });
+    var recipeIngQtyEl = document.getElementById('recipe-ing-qty');
+    if(recipeIngQtyEl) recipeIngQtyEl.addEventListener('input', function(){ rd.ingQty = Number(recipeIngQtyEl.value)||100; });
+
+    var recipeIngAddBtn = document.getElementById('recipe-ing-add-btn');
+    if(recipeIngAddBtn) recipeIngAddBtn.addEventListener('click', function(){
+      var name = (document.getElementById('recipe-ing-name').value||'').trim();
+      var qty = Number(document.getElementById('recipe-ing-qty').value)||100;
+      if(!name){ rd.ingError='Napiš prosím název suroviny.'; render(); return; }
+      rd.ingName = name; rd.ingQty = qty; rd.ingLoading = true; rd.ingError = '';
+      render();
+      lookupNutritionSource('kalorickeTabulky', name).catch(function(){
+        return lookupNutritionSource('nutriDatabaze', name);
+      }).then(function(result){
+        rd.ingredients = rd.ingredients.concat([{
+          id: uid(), name: name, matchedName: result.matchedName,
+          qty: qty, per100: {kcal:result.kcal, protein:result.protein, carbs:result.carbs, fat:result.fat}
+        }]);
+        rd.ingName = ''; rd.ingQty = 100; rd.ingLoading = false; rd.ingError = '';
+        render();
+      }).catch(function(err){
+        rd.ingLoading = false;
+        rd.ingError = (err && err.message) || 'Surovinu se nepodařilo najít ani na Kalorických tabulkách, ani v NutriDatabázi. Zkus jiný/přesnější název.';
+        render();
+      });
+    });
+
+    document.querySelectorAll('[data-recipe-qty-id]').forEach(function(input){
+      input.addEventListener('input', function(){
+        var id = input.getAttribute('data-recipe-qty-id');
+        var ing = rd.ingredients.filter(function(x){ return x.id===id; })[0];
+        if(!ing) return;
+        var qty = Number(input.value);
+        if(!qty || qty<=0) return;
+        ing.qty = qty;
+        var m = macrosFromPer100(ing.per100, ing.qty, 'g');
+        var metaEl = document.getElementById('recipe-ing-meta-'+id);
+        if(metaEl) metaEl.textContent = m.kcal+' kcal · B '+m.protein+' g · S '+m.carbs+' g · T '+m.fat+' g';
+        patchRecipeTotals();
+      });
+    });
+
+    document.querySelectorAll('[data-recipe-remove-id]').forEach(function(btn){
+      btn.addEventListener('click', function(){
+        var id = btn.getAttribute('data-recipe-remove-id');
+        rd.ingredients = rd.ingredients.filter(function(x){ return x.id!==id; });
+        render();
+      });
+    });
+
+    var recipeConfirmBtn = document.getElementById('recipe-confirm-btn');
+    if(recipeConfirmBtn) recipeConfirmBtn.addEventListener('click', function(){
+      var name = (document.getElementById('recipe-name').value||'').trim();
+      var servings = Number(document.getElementById('recipe-servings').value)||1;
+      if(!name || !rd.ingredients.length) return;
+      var totals = recipeTotals(rd);
+      if(totals.grams<=0) return;
+      var per100 = {
+        kcal: totals.kcal/totals.grams*100, protein: totals.protein/totals.grams*100,
+        carbs: totals.carbs/totals.grams*100, fat: totals.fat/totals.grams*100
+      };
+      var servingGrams = Math.round(totals.grams/servings);
+      var macros = macrosFromPer100(per100, servingGrams, 'g');
+      state.foodDraft = Object.assign({}, state.foodDraft, {
+        name: name, description: name, per100: per100,
+        kcal: macros.kcal, protein: macros.protein, carbs: macros.carbs, fat: macros.fat,
+        quantity: servingGrams, unit: 'g', knownFoodMatch:false
+      });
+      state.foodInputMode = 'text';
+      state.foodLookupNote = 'Recept "'+name+'" sestaven z '+rd.ingredients.length+' surovin (1 porce ≈ '+servingGrams+' g – množství a jednotku teď můžeš měnit a přepočítá se to samo)';
+      state.foodLookupError = '';
+      state.showRecipeModal = false;
+      state.recipeDraft = null;
+      render();
+    });
   }
 
   document.querySelectorAll('[data-delete-food-id]').forEach(function(btn){
