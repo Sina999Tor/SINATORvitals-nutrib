@@ -2136,6 +2136,12 @@ function renderRecipeModal(){
       '<button type="button" class="btn-secondary" id="recipe-ing-add-btn" style="width:100%;justify-content:center"'+(d.ingLoading?' disabled':'')+'>'+
         (d.ingLoading ? '<span class="ai-spinner"></span>Hledám na Kalorických tabulkách...' : ICONS.sparkle+' Najít a přidat surovinu')+
       '</button>'+
+      '<div class="field-row" style="margin-top:8px">'+
+        '<input type="file" accept="image/*" capture="environment" id="recipe-ing-barcode-input" style="display:none">'+
+        '<button type="button" class="btn-secondary" id="recipe-ing-barcode-btn" style="flex:1;justify-content:center"'+(d.ingLoading?' disabled':'')+'>'+ICONS.barcode+' Skenovat kód</button>'+
+        '<input type="file" accept="image/*" capture="environment" id="recipe-ing-photo-input" style="display:none">'+
+        '<button type="button" class="btn-secondary" id="recipe-ing-photo-btn" style="flex:1;justify-content:center"'+(d.ingLoading?' disabled':'')+'>'+ICONS.camera+' Vyfotit surovinu</button>'+
+      '</div>'+
       (d.ingError ? '<div class="form-error" style="margin-top:8px">'+ICONS.alert+' '+esc(d.ingError)+'</div>' : '')+
       '<div class="ai-result-title" style="margin-top:16px">Suroviny v receptu</div>'+
       '<div id="recipe-ing-list">'+ingredientsHtml+'</div>'+
@@ -2467,6 +2473,73 @@ function attachMainEvents(){
         rd.ingError = (err && err.message) || 'Surovinu se nepodařilo najít ani na Kalorických tabulkách, ani v NutriDatabázi. Zkus jiný/přesnější název.';
         render();
       });
+    });
+
+    function addRecipeIngredientFromPer100(name, per100, qty){
+      rd.ingredients = rd.ingredients.concat([{
+        id: uid(), name: name, matchedName: name,
+        qty: qty, per100: {kcal:per100.kcal, protein:per100.protein, carbs:per100.carbs, fat:per100.fat}
+      }]);
+      rd.ingName = ''; rd.ingQty = 100; rd.ingLoading = false; rd.ingError = '';
+      render();
+    }
+
+    function runRecipeIngBarcode(dataUrl){
+      var qty = Number(document.getElementById('recipe-ing-qty').value)||rd.ingQty||100;
+      rd.ingLoading = true; rd.ingError = ''; render();
+      decodeBarcodeFromDataUrl(dataUrl).then(function(code){
+        return lookupOpenFoodFacts(code);
+      }).then(function(info){
+        addRecipeIngredientFromPer100(info.name, {kcal:info.kcal100, protein:info.protein100, carbs:info.carbs100, fat:info.fat100}, qty);
+      }).catch(function(err){
+        estimateFoodFromImage(dataUrl, true).then(function(result){
+          addRecipeIngredientFromPer100(result.name, result, qty);
+        }).catch(function(err2){
+          rd.ingLoading = false;
+          rd.ingError = (err&&err.message) || friendlyAiError(err2);
+          render();
+        });
+      });
+    }
+
+    function runRecipeIngPhoto(dataUrl){
+      var qty = Number(document.getElementById('recipe-ing-qty').value)||rd.ingQty||100;
+      rd.ingLoading = true; rd.ingError = ''; render();
+      estimateFoodFromImage(dataUrl, true).then(function(result){
+        addRecipeIngredientFromPer100(result.name, result, qty);
+      }).catch(function(err){
+        rd.ingLoading = false;
+        rd.ingError = friendlyAiError(err);
+        render();
+      });
+    }
+
+    var recipeIngBarcodeBtn = document.getElementById('recipe-ing-barcode-btn');
+    if(recipeIngBarcodeBtn) recipeIngBarcodeBtn.addEventListener('click', function(){
+      document.getElementById('recipe-ing-barcode-input').click();
+    });
+    var recipeIngBarcodeInput = document.getElementById('recipe-ing-barcode-input');
+    if(recipeIngBarcodeInput) recipeIngBarcodeInput.addEventListener('change', function(e){
+      var file = e.target.files && e.target.files[0];
+      if(!file) return;
+      var reader = new FileReader();
+      reader.onload = function(ev){ runRecipeIngBarcode(ev.target.result); };
+      reader.readAsDataURL(file);
+      e.target.value = '';
+    });
+
+    var recipeIngPhotoBtn = document.getElementById('recipe-ing-photo-btn');
+    if(recipeIngPhotoBtn) recipeIngPhotoBtn.addEventListener('click', function(){
+      document.getElementById('recipe-ing-photo-input').click();
+    });
+    var recipeIngPhotoInput = document.getElementById('recipe-ing-photo-input');
+    if(recipeIngPhotoInput) recipeIngPhotoInput.addEventListener('change', function(e){
+      var file = e.target.files && e.target.files[0];
+      if(!file) return;
+      var reader = new FileReader();
+      reader.onload = function(ev){ runRecipeIngPhoto(ev.target.result); };
+      reader.readAsDataURL(file);
+      e.target.value = '';
     });
 
     document.querySelectorAll('[data-recipe-qty-id]').forEach(function(input){
