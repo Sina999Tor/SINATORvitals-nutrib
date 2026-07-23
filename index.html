@@ -1215,6 +1215,104 @@ function guessTypicalAbv(categoryTags, texts){
   }
   return 0;
 }
+// ---------- odhad hmotnosti "1 kusu" suroviny (pro přepínač g/ks u receptů) ----------
+var TYPICAL_PIECE_WEIGHTS_G = [
+  [/vejce|vajíčk|vajec/i, 55],
+  [/cibule/i, 110],
+  [/česnek|strouž/i, 5],
+  [/mrkev/i, 70],
+  [/brambor/i, 130],
+  [/rajč/i, 120],
+  [/paprik/i, 150],
+  [/citron|limet/i, 100],
+  [/pomeranč/i, 200],
+  [/banán/i, 120],
+  [/jablk/i, 170],
+  [/hrušk/i, 170],
+  [/avokádo/i, 200],
+  [/okurk/i, 300],
+  [/cuket/i, 350],
+  [/rohlík/i, 43],
+  [/houska/i, 55],
+  [/vejce/i, 55]
+];
+function lookupTypicalPieceWeight(name){
+  var low = String(name||'').toLowerCase();
+  for(var i=0;i<TYPICAL_PIECE_WEIGHTS_G.length;i++){
+    if(TYPICAL_PIECE_WEIGHTS_G[i][0].test(low)) return TYPICAL_PIECE_WEIGHTS_G[i][1];
+  }
+  return null;
+}
+function gramsPerPiecePrompt(name){
+  return 'Kolik typicky váží JEDEN kus/kus této potraviny v gramech, tak jak se běžně prodává/používá (syrové/celé, i s případnou slupkou apod.): "'+name+'". '+
+    'Odpověz VÝHRADNĚ jedním JSON objektem bez markdownu, bez vysvětlení, přesně v tomto tvaru: {"gramsPerPiece":číslo}.';
+}
+function extractGramsPerPiece(text){
+  var cleaned = String(text||'').replace(/```json/gi,'').replace(/```/g,'').trim();
+  var m = /"gramsPerPiece"\s*:\s*(-?[0-9]+(?:[.,][0-9]+)?)/.exec(cleaned) || /(\d+(?:[.,]\d+)?)/.exec(cleaned);
+  if(!m) throw new Error('AI nevrátila hmotnost kusu.');
+  var v = parseFloat(m[1].replace(',', '.'));
+  if(!isFinite(v) || v<=0) throw new Error('AI nevrátila platnou hmotnost kusu.');
+  return v;
+}
+function callGeminiGramsPerPiece(name, apiKey){
+  var url = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key='+encodeURIComponent(apiKey);
+  return fetch(url, {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ contents:[{parts:[{text:gramsPerPiecePrompt(name)}]}], generationConfig:{temperature:0.1} })
+  }).then(function(res){ if(!res.ok) throw new Error('Gemini API chyba '+res.status); return res.json(); })
+    .then(function(data){
+      var text = data && data.candidates && data.candidates[0] && data.candidates[0].content && data.candidates[0].content.parts && data.candidates[0].content.parts[0] && data.candidates[0].content.parts[0].text;
+      if(!text) throw new Error('Gemini nevrátila odpověď.');
+      return extractGramsPerPiece(text);
+    });
+}
+function callChatCompletionsGramsPerPiece(name, apiKey, endpoint, model, extraHeaders){
+  var headers = Object.assign({'Content-Type':'application/json','Authorization':'Bearer '+apiKey}, extraHeaders||{});
+  return fetch(endpoint, {
+    method:'POST', headers:headers,
+    body: JSON.stringify({ model:model, messages:[{role:'user', content:gramsPerPiecePrompt(name)}], temperature:0.1, max_tokens:60 })
+  }).then(function(res){
+    if(!res.ok) return res.text().then(function(t){ throw new Error(model+' chyba '+res.status+(t?': '+t.slice(0,200):'')); });
+    return res.json();
+  }).then(function(data){
+    var text = data && data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content;
+    if(!text) throw new Error('AI nevrátila odpověď.');
+    return extractGramsPerPiece(text);
+  });
+}
+function callGroqGramsPerPiece(name, apiKey){
+  return callChatCompletionsGramsPerPiece(name, apiKey, 'https://api.groq.com/openai/v1/chat/completions', 'llama-3.1-8b-instant');
+}
+function callOpenRouterGramsPerPiece(name, apiKey){
+  return callChatCompletionsGramsPerPiece(name, apiKey, 'https://openrouter.ai/api/v1/chat/completions', 'meta-llama/llama-3.1-8b-instruct', {'HTTP-Referer':location.href, 'X-Title':'Sinator Vitals'});
+}
+function estimateGramsPerPiece(name){
+  var keys = state.aiKeys||{};
+  var chain = [];
+  if(keys.gemini) chain.push(function(){ return callGeminiGramsPerPiece(name, keys.gemini); });
+  if(keys.groq) chain.push(function(){ return callGroqGramsPerPiece(name, keys.groq); });
+  if(keys.openrouter) chain.push(function(){ return callOpenRouterGramsPerPiece(name, keys.openrouter); });
+  if(!chain.length) return Promise.reject(new Error('Pro přepočet kusů na gramy u neznámé suroviny přidej v nastavení aspoň jeden AI API klíč (nebo přepni na gramy).'));
+  var i = 0;
+  function attempt(lastErr){
+    if(i>=chain.length) return Promise.reject(lastErr||new Error('Odhad hmotnosti kusu se nezdařil.'));
+    var fn = chain[i++];
+    return retryOn429(fn, 2, 1500).catch(function(err){ return attempt(err); });
+  }
+  return attempt();
+}
+// Převede zadané množství (qtyRaw, jednotka 'g' nebo 'ks') na gramy. U 'ks' nejdřív
+// zkusí tabulku typických hmotností, pak AI odhad hmotnosti jednoho kusu.
+function resolveIngredientGrams(name, qtyRaw, unit){
+  var qty = Number(qtyRaw)||0;
+  if(unit!=='ks') return Promise.resolve({grams: qty, pieceWeight: null});
+  var table = lookupTypicalPieceWeight(name);
+  if(table) return Promise.resolve({grams: Math.round(qty*table), pieceWeight: table});
+  return estimateGramsPerPiece(name).then(function(g){
+    return {grams: Math.round(qty*g), pieceWeight: g};
+  });
+}
 function lookupOpenFoodFacts(code){
   return fetch('https://world.openfoodfacts.org/api/v0/product/'+encodeURIComponent(code)+'.json')
     .then(function(res){ if(!res.ok) throw new Error('Chyba při vyhledávání produktu.'); return res.json(); })
@@ -2101,7 +2199,7 @@ function recipeTotals(draft){
 }
 
 function renderRecipeModal(){
-  var d = state.recipeDraft || (state.recipeDraft = {name:'', servings:4, ingredients:[], ingName:'', ingQty:100, ingLoading:false, ingError:''});
+  var d = state.recipeDraft || (state.recipeDraft = {name:'', servings:4, ingredients:[], ingName:'', ingQty:100, ingUnit:'g', ingLoading:false, ingError:''});
   var totals = recipeTotals(d);
   var servings = Number(d.servings)||1;
   var perServing = servings>0 ? {
@@ -2115,7 +2213,7 @@ function renderRecipeModal(){
     return '<div class="desc-suggestion-item" data-recipe-ing-id="'+ing.id+'" style="cursor:default">'+
       '<div style="flex:1;min-width:0">'+
         '<div class="desc-suggestion-name">'+esc(ing.matchedName||ing.name)+'</div>'+
-        '<div class="desc-suggestion-meta" id="recipe-ing-meta-'+ing.id+'">'+m.kcal+' kcal · B '+m.protein+' g · S '+m.carbs+' g · T '+m.fat+' g</div>'+
+        '<div class="desc-suggestion-meta" id="recipe-ing-meta-'+ing.id+'">'+m.kcal+' kcal · B '+m.protein+' g · S '+m.carbs+' g · T '+m.fat+' g'+(ing.pieceNote?' · '+esc(ing.pieceNote):'')+'</div>'+
       '</div>'+
       '<input class="input" data-recipe-qty-id="'+ing.id+'" type="number" inputmode="decimal" min="1" step="1" value="'+ing.qty+'" style="width:70px;flex-shrink:0;text-align:right;padding:6px 8px">'+
       '<span style="font-size:11.5px;color:var(--ink-muted);flex-shrink:0">g</span>'+
@@ -2131,7 +2229,11 @@ function renderRecipeModal(){
       '<div class="ai-result-title" style="margin-top:14px">Přidat surovinu</div>'+
       '<div class="field-row">'+
         '<label class="field" style="flex:2"><span>Surovina</span><input class="input" id="recipe-ing-name" autocomplete="off" placeholder="např. kuřecí prsa" value="'+esc(d.ingName||'')+'"></label>'+
-        '<label class="field" style="flex:0 0 90px"><span>Množství (g)</span><input class="input" id="recipe-ing-qty" type="number" inputmode="decimal" min="1" step="1" value="'+(d.ingQty||100)+'"></label>'+
+        '<label class="field" style="flex:0 0 78px"><span>Množství</span><input class="input" id="recipe-ing-qty" type="number" inputmode="decimal" min="1" step="1" value="'+(d.ingQty||100)+'"></label>'+
+        '<label class="field" style="flex:0 0 70px"><span>Jednotka</span><div class="seg" id="recipe-ing-unit-seg" style="height:38px">'+
+          '<button type="button" class="seg-btn'+((d.ingUnit||'g')==='g'?' active':'')+'" data-unit="g" style="padding:0 6px">g</button>'+
+          '<button type="button" class="seg-btn'+((d.ingUnit||'g')==='ks'?' active':'')+'" data-unit="ks" style="padding:0 6px">ks</button>'+
+        '</div></label>'+
       '</div>'+
       '<button type="button" class="btn-secondary" id="recipe-ing-add-btn" style="width:100%;justify-content:center"'+(d.ingLoading?' disabled':'')+'>'+
         (d.ingLoading ? '<span class="ai-spinner"></span>Hledám na Kalorických tabulkách...' : ICONS.sparkle+' Najít a přidat surovinu')+
@@ -2450,24 +2552,54 @@ function attachMainEvents(){
     var recipeIngNameEl = document.getElementById('recipe-ing-name');
     if(recipeIngNameEl) recipeIngNameEl.addEventListener('input', function(){ rd.ingName = recipeIngNameEl.value; });
     var recipeIngQtyEl = document.getElementById('recipe-ing-qty');
-    if(recipeIngQtyEl) recipeIngQtyEl.addEventListener('input', function(){ rd.ingQty = Number(recipeIngQtyEl.value)||100; });
+    if(recipeIngQtyEl) recipeIngQtyEl.addEventListener('input', function(){ rd.ingQty = Number(recipeIngQtyEl.value)||(rd.ingUnit==='ks'?1:100); });
+
+    document.querySelectorAll('#recipe-ing-unit-seg [data-unit]').forEach(function(btn){
+      btn.addEventListener('click', function(){
+        var u = btn.getAttribute('data-unit');
+        if((rd.ingUnit||'g')===u) return;
+        var qtyEl = document.getElementById('recipe-ing-qty');
+        var curVal = qtyEl ? Number(qtyEl.value) : null;
+        if(u==='ks' && (!curVal || curVal===100)) rd.ingQty = 1;
+        else if(u==='g' && (!curVal || curVal===1)) rd.ingQty = 100;
+        else rd.ingQty = curVal || rd.ingQty;
+        rd.ingUnit = u;
+        render();
+      });
+    });
+
+    // Sjednocené přidání suroviny do receptu (z ručního hledání, čárového kódu i fotky) —
+    // per100 = makra na 100 g, qtyRaw/unit = zadané množství a jednotka (g nebo ks); u 'ks'
+    // se hmotnost kusu dopočítá z tabulky typických hmotností nebo přes AI.
+    function addRecipeIngredientFromPer100(name, matchedName, per100, qtyRaw, unit){
+      resolveIngredientGrams(name, qtyRaw, unit).then(function(conv){
+        rd.ingredients = rd.ingredients.concat([{
+          id: uid(), name: name, matchedName: matchedName || name,
+          qty: conv.grams || qtyRaw,
+          per100: {kcal:per100.kcal, protein:per100.protein, carbs:per100.carbs, fat:per100.fat},
+          pieceNote: (unit==='ks') ? (qtyRaw+' ks × ~'+Math.round(conv.pieceWeight)+' g') : null
+        }]);
+        rd.ingName = ''; rd.ingQty = 100; rd.ingUnit = 'g'; rd.ingLoading = false; rd.ingError = '';
+        render();
+      }).catch(function(err){
+        rd.ingLoading = false;
+        rd.ingError = (err && err.message) || 'Nepodařilo se určit hmotnost kusu, zkus přepnout na gramy.';
+        render();
+      });
+    }
 
     var recipeIngAddBtn = document.getElementById('recipe-ing-add-btn');
     if(recipeIngAddBtn) recipeIngAddBtn.addEventListener('click', function(){
       var name = (document.getElementById('recipe-ing-name').value||'').trim();
-      var qty = Number(document.getElementById('recipe-ing-qty').value)||100;
+      var unit = rd.ingUnit || 'g';
+      var qty = Number(document.getElementById('recipe-ing-qty').value)||(unit==='ks'?1:100);
       if(!name){ rd.ingError='Napiš prosím název suroviny.'; render(); return; }
       rd.ingName = name; rd.ingQty = qty; rd.ingLoading = true; rd.ingError = '';
       render();
       lookupNutritionSource('kalorickeTabulky', name).catch(function(){
         return lookupNutritionSource('nutriDatabaze', name);
       }).then(function(result){
-        rd.ingredients = rd.ingredients.concat([{
-          id: uid(), name: name, matchedName: result.matchedName,
-          qty: qty, per100: {kcal:result.kcal, protein:result.protein, carbs:result.carbs, fat:result.fat}
-        }]);
-        rd.ingName = ''; rd.ingQty = 100; rd.ingLoading = false; rd.ingError = '';
-        render();
+        addRecipeIngredientFromPer100(name, result.matchedName, {kcal:result.kcal, protein:result.protein, carbs:result.carbs, fat:result.fat}, qty, unit);
       }).catch(function(err){
         rd.ingLoading = false;
         rd.ingError = (err && err.message) || 'Surovinu se nepodařilo najít ani na Kalorických tabulkách, ani v NutriDatabázi. Zkus jiný/přesnější název.';
@@ -2475,25 +2607,17 @@ function attachMainEvents(){
       });
     });
 
-    function addRecipeIngredientFromPer100(name, per100, qty){
-      rd.ingredients = rd.ingredients.concat([{
-        id: uid(), name: name, matchedName: name,
-        qty: qty, per100: {kcal:per100.kcal, protein:per100.protein, carbs:per100.carbs, fat:per100.fat}
-      }]);
-      rd.ingName = ''; rd.ingQty = 100; rd.ingLoading = false; rd.ingError = '';
-      render();
-    }
-
     function runRecipeIngBarcode(dataUrl){
-      var qty = Number(document.getElementById('recipe-ing-qty').value)||rd.ingQty||100;
+      var unit = rd.ingUnit || 'g';
+      var qty = Number(document.getElementById('recipe-ing-qty').value)||rd.ingQty||(unit==='ks'?1:100);
       rd.ingLoading = true; rd.ingError = ''; render();
       decodeBarcodeFromDataUrl(dataUrl).then(function(code){
         return lookupOpenFoodFacts(code);
       }).then(function(info){
-        addRecipeIngredientFromPer100(info.name, {kcal:info.kcal100, protein:info.protein100, carbs:info.carbs100, fat:info.fat100}, qty);
+        addRecipeIngredientFromPer100(info.name, info.name, {kcal:info.kcal100, protein:info.protein100, carbs:info.carbs100, fat:info.fat100}, qty, unit);
       }).catch(function(err){
         estimateFoodFromImage(dataUrl, true).then(function(result){
-          addRecipeIngredientFromPer100(result.name, result, qty);
+          addRecipeIngredientFromPer100(result.name, result.name, result, qty, unit);
         }).catch(function(err2){
           rd.ingLoading = false;
           rd.ingError = (err&&err.message) || friendlyAiError(err2);
@@ -2503,10 +2627,11 @@ function attachMainEvents(){
     }
 
     function runRecipeIngPhoto(dataUrl){
-      var qty = Number(document.getElementById('recipe-ing-qty').value)||rd.ingQty||100;
+      var unit = rd.ingUnit || 'g';
+      var qty = Number(document.getElementById('recipe-ing-qty').value)||rd.ingQty||(unit==='ks'?1:100);
       rd.ingLoading = true; rd.ingError = ''; render();
       estimateFoodFromImage(dataUrl, true).then(function(result){
-        addRecipeIngredientFromPer100(result.name, result, qty);
+        addRecipeIngredientFromPer100(result.name, result.name, result, qty, unit);
       }).catch(function(err){
         rd.ingLoading = false;
         rd.ingError = friendlyAiError(err);
