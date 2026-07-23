@@ -778,6 +778,29 @@ function foodQtyLabel(f){
   var qtyStr = (f.quantity%1===0) ? f.quantity : f.quantity;
   return qtyStr+' '+u.label.split(' (')[0]+' · ';
 }
+// Přepočet množství+jednotky na "gramový ekvivalent" pro škálování nutričních
+// hodnot uložených jako "na 100 g" (z Kalorických tabulek, NutriDatabáze i
+// Open Food Facts). g/kg/ml/l mají přesný převod; u ostatních jednotek (ks,
+// porce, lžíce, balení, hrnek, plátek) nemáme skutečnou hmotnost, takže se
+// zachovává dosavadní konvence appky - 1 kus dané jednotky ~ 100 g základ,
+// aby škálování dávalo smysl i při počítání "porcí" nahoru/dolů.
+function gramsForQtyUnit(qty, unitKey){
+  var mult = unitKey==='g' ? 1 : unitKey==='kg' ? 1000 : unitKey==='ml' ? 1 : unitKey==='l' ? 1000 : 100;
+  return qty*mult;
+}
+// Spočítá kcal/protein/carbs/fat pro dané množství+jednotku z uložené
+// "na 100 g" reference (per100). Používá se jak při prvním načtení z
+// KalorickéTabulky.cz/NutriDatabáze/Open Food Facts, tak při každé změně
+// množství nebo jednotky (živé přepočítání ve formuláři).
+function macrosFromPer100(per100, qty, unitKey){
+  var factor = gramsForQtyUnit(qty, unitKey)/100;
+  return {
+    kcal: Math.round((per100.kcal||0)*factor),
+    protein: Math.round((per100.protein||0)*factor*10)/10,
+    carbs: Math.round((per100.carbs||0)*factor*10)/10,
+    fat: Math.round((per100.fat||0)*factor*10)/10
+  };
+}
 var ACTIVITY_LEVELS = [
   {key:'sedentary', mult:1.2, label:'Sedavý režim', hint:'málo pohybu, sedavá práce'},
   {key:'light', mult:1.375, label:'Lehká aktivita', hint:'pohyb / trénink 1–3× týdně'},
@@ -2409,13 +2432,20 @@ function attachMainEvents(){
         state.foodLookupNote = '';
         render();
         lookupNutritionSource(cfg.source, query).then(function(result){
+          var qtyEl = document.getElementById('food-qty');
+          var unitEl = document.getElementById('food-unit');
+          var qty = qtyEl ? (Number(qtyEl.value)||1) : 1;
+          var unitKey = unitEl ? unitEl.value : 'porce';
+          var per100 = {kcal:result.kcal, protein:result.protein, carbs:result.carbs, fat:result.fat};
+          var macros = macrosFromPer100(per100, qty, unitKey);
           state.foodDraft = Object.assign({}, state.foodDraft, {
             name: state.foodDraft && state.foodDraft.name ? state.foodDraft.name : query,
-            kcal: result.kcal, protein: result.protein, carbs: result.carbs, fat: result.fat,
+            per100: per100,
+            kcal: macros.kcal, protein: macros.protein, carbs: macros.carbs, fat: macros.fat,
             knownFoodMatch:false
           });
           state.foodLookupLoading = null;
-          state.foodLookupNote = result.source+': "'+result.matchedName+'" (hodnoty na 100 g – uprav podle skutečného množství)';
+          state.foodLookupNote = result.source+': "'+result.matchedName+'" (hodnoty na 100 g – množství a jednotku teď můžeš měnit a přepočítá se to samo)';
           render();
         }).catch(function(err){
           state.foodLookupLoading = null;
@@ -2606,9 +2636,16 @@ function attachMainEvents(){
                 .then(function(data){
                   if(!data || !data.success){ state.foodAiError = (data && data.message) || 'Načtení z Kalorických tabulek se nezdařilo.'; render(); return; }
                   var finalName = data.matchedName || name;
+                  var qtyEl = document.getElementById('food-qty');
+                  var unitEl = document.getElementById('food-unit');
+                  var qty = qtyEl ? (Number(qtyEl.value)||1) : 1;
+                  var unitKey = unitEl ? unitEl.value : 'porce';
+                  var per100 = {kcal:data.kcal, protein:data.protein, carbs:data.carbs, fat:data.fat};
+                  var macros = macrosFromPer100(per100, qty, unitKey);
                   state.foodDraft = Object.assign({}, state.foodDraft, {
                     description: finalName, name: finalName,
-                    kcal: data.kcal, protein: data.protein, carbs: data.carbs, fat: data.fat,
+                    per100: per100,
+                    kcal: macros.kcal, protein: macros.protein, carbs: macros.carbs, fat: macros.fat,
                     knownFoodMatch:false
                   });
                   state.foodAiError='';
@@ -2619,7 +2656,8 @@ function attachMainEvents(){
                   render();
                 });
             } else {
-              var qty = Number(document.getElementById('food-qty').value) || Number(el.getAttribute('data-qty')) || 100;
+              var qtyElOff = document.getElementById('food-qty');
+              var qty = qtyElOff ? (Number(qtyElOff.value)||Number(el.getAttribute('data-qty'))||100) : (Number(el.getAttribute('data-qty'))||100);
               var isMl = el.getAttribute('data-unit')==='ml';
               var factor = qty/100;
               var kcal100 = Number(el.getAttribute('data-kcal100'))||0;
@@ -2628,8 +2666,10 @@ function attachMainEvents(){
               var fat100 = Number(el.getAttribute('data-fat100'))||0;
               var alcohol100 = Number(el.getAttribute('data-alcohol100'))||0;
               var alcoholG = alcohol100 ? Math.round(qty*(alcohol100/100)*0.79) : 0;
+              var per100 = {kcal:kcal100, protein:protein100, carbs:carbs100, fat:fat100, alcohol100:alcohol100, isMl:isMl, rawQtyFactor:true};
               state.foodDraft = Object.assign({}, state.foodDraft, {
                 description: name, name: name,
+                per100: per100,
                 kcal: Math.round(kcal100*factor),
                 protein: Math.round(protein100*factor),
                 carbs: Math.round(carbs100*factor),
@@ -2776,6 +2816,58 @@ function attachMainEvents(){
       var v = Number(foodKcalInput.value);
       foodKcalKjLabel.textContent = v>0 ? kcalToKj(v)+' kJ' : '';
     });
+
+    // Živé přepočítání kalorií/makro živin (a u nápojů i alkoholu), když se
+    // po vyhledání z KalorickéTabulky.cz/NutriDatabáze/Open Food Facts změní
+    // množství nebo jednotka. Přímo přepisuje hodnoty v polích (bez plného
+    // render()), aby psaní čísla nebylo přerušované/neskákal kurzor.
+    function recalcFoodMacrosFromPer100(){
+      var draft = state.foodDraft;
+      if(!draft || !draft.per100) return;
+      var qtyEl = document.getElementById('food-qty');
+      var unitEl = document.getElementById('food-unit');
+      if(!qtyEl || !unitEl) return;
+      var qty = Number(qtyEl.value);
+      if(!qty || qty<=0) return;
+      var unitKey = unitEl.value;
+      var per100 = draft.per100;
+      var factor = per100.rawQtyFactor ? (qty/100) : (gramsForQtyUnit(qty, unitKey)/100);
+      var newKcal = Math.round((per100.kcal||0)*factor);
+      var newProtein = Math.round((per100.protein||0)*factor*10)/10;
+      var newCarbs = Math.round((per100.carbs||0)*factor*10)/10;
+      var newFat = Math.round((per100.fat||0)*factor*10)/10;
+      var updates = {kcal:newKcal, protein:newProtein, carbs:newCarbs, fat:newFat, quantity:qty, unit:unitKey};
+
+      var kcalEl = document.getElementById('food-kcal');
+      var proteinEl = document.getElementById('food-protein');
+      var carbsEl = document.getElementById('food-carbs');
+      var fatEl = document.getElementById('food-fat');
+      var kjLabel = document.getElementById('food-kcal-kj');
+      if(kcalEl) kcalEl.value = newKcal;
+      if(proteinEl) proteinEl.value = newProtein;
+      if(carbsEl) carbsEl.value = newCarbs;
+      if(fatEl) fatEl.value = newFat;
+      if(kjLabel) kjLabel.textContent = newKcal>0 ? kcalToKj(newKcal)+' kJ' : '';
+
+      if(per100.alcohol100){
+        var alcoholG = Math.round(qty*(per100.alcohol100/100)*0.79);
+        updates.alcohol = alcoholG;
+        updates.volumeMl = (alcoholG>0 && per100.isMl) ? Math.round(qty) : null;
+        updates.abv = alcoholG>0 ? (Math.round(per100.alcohol100*10)/10) : 0;
+        var alcEl = document.getElementById('food-alcohol');
+        var alcVolEl = document.getElementById('food-alcohol-volume');
+        var alcAbvEl = document.getElementById('food-alcohol-abv');
+        if(alcEl) alcEl.value = alcoholG;
+        if(alcVolEl && updates.volumeMl!=null) alcVolEl.value = updates.volumeMl;
+        if(alcAbvEl) alcAbvEl.value = updates.abv;
+      }
+
+      state.foodDraft = Object.assign({}, draft, updates);
+    }
+    var foodQtyRecalcEl = document.getElementById('food-qty');
+    var foodUnitRecalcEl = document.getElementById('food-unit');
+    if(foodQtyRecalcEl) foodQtyRecalcEl.addEventListener('input', recalcFoodMacrosFromPer100);
+    if(foodUnitRecalcEl) foodUnitRecalcEl.addEventListener('change', recalcFoodMacrosFromPer100);
 
     var foodSaveBtn = document.getElementById('food-save-btn');
     if(foodSaveBtn) foodSaveBtn.addEventListener('click', function(){
