@@ -187,8 +187,8 @@ async function fetchViaReader(url, timeoutMs, waitSeconds) {
   }
 }
 
-// Najde číslo, které stojí v textu blízko za daným labelem (funguje na
-// vykresleném textu z Jina Readeru, ne na syrovém HTML/Angular markupu).
+// Najde číslo, které stojí v textu blízko za daným labelem. Zkouší víc
+// vzorů popořadě - první, co něco najde, vyhrává.
 function findNumberNearLabel(text, labelPatterns) {
   for (let i = 0; i < labelPatterns.length; i++) {
     const re = new RegExp(labelPatterns[i] + '[^0-9\\n]{0,40}?(\\d+(?:[.,]\\d+)?)', 'i');
@@ -201,21 +201,31 @@ function findNumberNearLabel(text, labelPatterns) {
 // Zparsuje výstup Jina Readeru pro stránku jedné potraviny na KT.
 // Ověří, že jde skutečně o stránku potraviny (ne přesměrování na kategorii)
 // pomocí řádku "URL Source:", který Reader vrací s finální URL po redirectu.
+//
+// DŮLEŽITÉ: stránka potraviny obsahuje "{{...}}" Angular placeholdery úplně
+// VŽDY, i když je hlavní obsah stránky správně vyrenderovaný - typicky v
+// neaktivních prvcích jako přihlašovací/registrační formulář v hlavičce
+// ({{profile.email}}, {{errors.message}} apod.), které se nikdy nezobrazí,
+// ale v textu stránky zůstávají. Přítomnost {{...}} PROTO NENÍ důvod stránku
+// zahazovat - důležité je najít reálné číslo hned za konkrétním datovým
+// placeholderem (např. "{{data.foodstuff.energy}}121 kcal" - číslo bez
+// mezery hned za "}}"). To je ověřeno na reálné stránce KT.
 function parseKtReaderText(text) {
   if (!text) return null;
-  // pokud Reader z nějakého důvodu nestihl JS vykreslit, v textu zůstanou
-  // doslovné "{{...}}" placeholdery - takový výsledek nelze použít.
-  if (/\{\{[^}]*\}\}/.test(text)) return null;
 
   const urlSourceM = /URL Source:\s*(\S+)/i.exec(text);
   const finalUrl = urlSourceM ? urlSourceM[1] : '';
   if (finalUrl && !/\/potraviny\//.test(finalUrl)) return null; // přesměrováno na kategorii = slug neexistuje
 
-  const kcal = findNumberNearLabel(text, ['Energetick[aá] hodnota[^\\n]{0,25}?kcal', '\\bkcal\\b']);
+  const kcal = findNumberNearLabel(text, [
+    'data\\.foodstuff\\.energy\\}\\}',
+    'Energetick[aá] hodnota[^\\n]{0,25}?kcal',
+    '\\bkcal\\b'
+  ]);
   if (kcal == null) return null;
-  const protein = findNumberNearLabel(text, ['B[ií]lkovin\\w*']);
-  const carbs = findNumberNearLabel(text, ['Sacharid\\w*']);
-  const fat = findNumberNearLabel(text, ['Tuk\\w*']);
+  const protein = findNumberNearLabel(text, ['data\\.foodstuff\\.protein\\}\\}', 'B[ií]lkovin\\w*']);
+  const carbs = findNumberNearLabel(text, ['data\\.foodstuff\\.carbohydrate\\}\\}', 'Sacharid\\w*']);
+  const fat = findNumberNearLabel(text, ['data\\.foodstuff\\.fat\\}\\}', 'Tuk\\w*']);
 
   const titleM = /^Title:\s*(.+)$/im.exec(text);
   let matchedName = titleM ? titleM[1] : '';
@@ -236,7 +246,11 @@ async function fetchAndParseKtPage(slug, debugParts, label) {
   if (debugParts) debugParts.push((label || 'stránka "' + slug + '"') + ': Reader HTTP ' + res.status + (res.error ? ' (' + res.error + ')' : ''));
   if (!res.ok) return null;
   const data = parseKtReaderText(res.text);
-  if (!data && debugParts) debugParts.push('stránka nalezena, ale nejde o platnou potravinu nebo se hodnoty nepodařilo přečíst');
+  if (!data && debugParts) {
+    const energyIdx = res.text.indexOf('data.foodstuff.energy');
+    const nearby = energyIdx !== -1 ? res.text.slice(energyIdx, energyIdx + 60).replace(/\s+/g, ' ') : '(placeholder "data.foodstuff.energy" v textu vůbec není)';
+    debugParts.push('stránka nalezena, ale hodnoty se nepodařilo přečíst (' + res.text.length + ' znaků; kolem energie: "' + nearby + '")');
+  }
   return data;
 }
 
@@ -345,8 +359,9 @@ async function suggestKalorickeTabulky(query) {
 async function lookupKalorickeTabulkyBySlug(slug) {
   const s = String(slug || '').trim();
   if (!s) return { success: false, message: 'Chybí slug potraviny.' };
-  const data = await fetchAndParseKtPage(s);
-  if (!data) return { success: false, message: 'Nepodařilo se načíst hodnoty pro tuto potravinu z Kalorických tabulek.' };
+  const debugParts = [];
+  const data = await fetchAndParseKtPage(s, debugParts, 'stránka "' + s + '"');
+  if (!data) return { success: false, message: 'Nepodařilo se načíst hodnoty pro tuto potravinu z Kalorických tabulek. (' + debugParts.join('; ') + ')' };
   return Object.assign({ success: true, source: 'KalorickéTabulky.cz', per: '100 g' }, data);
 }
 
