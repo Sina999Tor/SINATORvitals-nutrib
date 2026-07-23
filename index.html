@@ -1512,7 +1512,32 @@ function renderGauge(bmi){
 }
 
 // ---------- chart ----------
-function renderChart(entries, minNormal, maxNormal){
+var MONTH_ABBR_CS = ['led','úno','bře','dub','kvě','čvn','čvc','srp','zář','říj','lis','pro'];
+function formatMonthShort(iso){ var p=iso.split('-'); var mi=parseInt(p[1],10)-1; return MONTH_ABBR_CS[mi]+' '+p[0].slice(2); }
+function formatYearShort(iso){ return iso.split('-')[0]; }
+function formatMonthFull(iso){ var p=iso.split('-'); var mi=parseInt(p[1],10)-1; return MONTH_ABBR_CS[mi]+' '+p[0]; }
+// Seskupí záznamy váhy podle zvoleného rozsahu ('days' = beze změny, 'months'/'years' =
+// jeden bod za období, hodnota = průměr všech záznamů v daném období).
+function groupEntriesByRange(entries, range){
+  var asc = sortedAsc(entries);
+  if(range!=='months' && range!=='years') return asc;
+  var keyLen = range==='months' ? 7 : 4;
+  var buckets = {};
+  var order = [];
+  asc.forEach(function(e){
+    var key = e.date.slice(0, keyLen);
+    if(!buckets[key]){ buckets[key] = {sum:0, count:0, date:e.date, weight:e.weight}; order.push(key); }
+    var b = buckets[key];
+    b.sum += e.weight; b.count += 1;
+    if(e.date >= b.date){ b.date = e.date; b.weight = e.weight; }
+  });
+  return order.map(function(key){
+    var b = buckets[key];
+    return {id:'agg-'+key, date:b.date, weight: +(b.sum/b.count).toFixed(1)};
+  });
+}
+function renderChart(entries, minNormal, maxNormal, labelMode){
+  labelMode = labelMode || 'day';
   var data = sortedAsc(entries);
   if(data.length<2) return null;
   var W=600,H=260,padL=42,padR=14,padT=14,padB=28;
@@ -1540,9 +1565,19 @@ function renderChart(entries, minNormal, maxNormal){
   var pts = data.map(function(d){ return xScale(new Date(d.date).getTime())+','+yScale(d.weight); });
   var polyline = '<polyline points="'+pts.join(' ')+'" fill="none" stroke="'+COLORS.accent+'" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>';
 
+  function fmtLabel(iso){
+    if(labelMode==='month') return formatMonthShort(iso);
+    if(labelMode==='year') return formatYearShort(iso);
+    return formatDateShort(iso);
+  }
+  function fmtTooltipDate(iso){
+    if(labelMode==='month') return formatMonthFull(iso)+' (průměr)';
+    if(labelMode==='year') return iso.slice(0,4)+' (průměr)';
+    return formatDateFull(iso);
+  }
   var dots = data.map(function(d){
     var x=xScale(new Date(d.date).getTime()), y=yScale(d.weight);
-    return '<circle cx="'+x+'" cy="'+y+'" r="3.5" fill="'+COLORS.accent+'"><title>'+formatDateFull(d.date)+': '+d.weight+' kg</title></circle>';
+    return '<circle cx="'+x+'" cy="'+y+'" r="3.5" fill="'+COLORS.accent+'"><title>'+fmtTooltipDate(d.date)+': '+d.weight+' kg</title></circle>';
   }).join('');
 
   var xLabelStep = Math.max(1, Math.ceil(data.length/6));
@@ -1550,7 +1585,7 @@ function renderChart(entries, minNormal, maxNormal){
   data.forEach(function(d,i){
     if(i%xLabelStep===0 || i===data.length-1){
       var x=xScale(new Date(d.date).getTime());
-      xLabels += '<text x="'+x+'" y="'+(H-8)+'" text-anchor="middle" font-size="10" fill="'+COLORS.inkMuted+'" font-family="JetBrains Mono, monospace">'+formatDateShort(d.date)+'</text>';
+      xLabels += '<text x="'+x+'" y="'+(H-8)+'" text-anchor="middle" font-size="10" fill="'+COLORS.inkMuted+'" font-family="JetBrains Mono, monospace">'+fmtLabel(d.date)+'</text>';
     }
   });
 
@@ -1766,7 +1801,10 @@ function renderMain(){
   var deltaIcon = delta===0?ICONS.minus:(delta<0?ICONS.down:ICONS.up);
   var deltaColor = delta===0?COLORS.ink:(delta<0?COLORS.normal:COLORS.obese);
 
-  var chartSvg = renderChart(entries, minNormal, maxNormal);
+  var weightChartRange = state.weightChartRange || 'days';
+  var chartEntries = groupEntriesByRange(entries, weightChartRange);
+  var chartLabelMode = weightChartRange==='months' ? 'month' : (weightChartRange==='years' ? 'year' : 'day');
+  var chartSvg = renderChart(chartEntries, minNormal, maxNormal, chartLabelMode);
   var plan = calcCaloriePlan(profile, latest.weight);
 
   var html = '<div class="page">';
@@ -1930,11 +1968,16 @@ html += '<section class="stat-grid fade-up">'+
     '</form><div id="entry-error"></div>'+
   '</section>';
 
-  html += '<section class="card fade-up"><div class="card-title">Progres v čase</div>';
+  html += '<section class="card fade-up"><div class="card-title" style="margin-bottom:10px">Progres v čase</div>'+
+    '<div class="seg" id="weight-chart-range-seg" style="margin-bottom:12px">'+
+      '<button type="button" class="seg-btn'+(weightChartRange==='days'?' active':'')+'" data-range="days">Dny</button>'+
+      '<button type="button" class="seg-btn'+(weightChartRange==='months'?' active':'')+'" data-range="months">Měsíce</button>'+
+      '<button type="button" class="seg-btn'+(weightChartRange==='years'?' active':'')+'" data-range="years">Roky</button>'+
+    '</div>';
   if(chartSvg){
     html += '<div class="chart-wrap">'+chartSvg+'<div class="chart-legend"><span class="legend-swatch"></span> doporučené pásmo hmotnosti</div></div>';
   } else {
-    html += '<div class="empty-state">Přidej ještě aspoň jeden záznam a uvidíš graf progresu.</div>';
+    html += '<div class="empty-state">Přidej ještě aspoň jeden záznam v tomto zobrazení a uvidíš graf progresu.</div>';
   }
   html += '</section>';
 
@@ -3328,6 +3371,14 @@ function attachMainEvents(){
       render();
     });
   }
+
+  var weightChartRangeSeg = document.getElementById('weight-chart-range-seg');
+  if(weightChartRangeSeg) weightChartRangeSeg.querySelectorAll('.seg-btn').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      state.weightChartRange = btn.getAttribute('data-range');
+      render();
+    });
+  });
 
   var entryForm = document.getElementById('entry-form');
   if(entryForm) entryForm.addEventListener('submit', function(e){
