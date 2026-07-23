@@ -43,6 +43,9 @@
   .bmi-label{font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.1em;color:var(--ink-muted);margin-top:2px;}
   .pill{display:inline-flex;align-items:center;gap:6px;padding:6px 14px;border-radius:100px;font-size:13px;font-weight:600;margin:8px 0 14px;}
   .pill-dot{width:7px;height:7px;border-radius:50%;}
+  .about-me-link{display:inline-flex;align-items:center;gap:6px;padding:6px 10px 6px 8px;border-radius:100px;border:1px solid var(--line);background:var(--surface-2);color:var(--ink-muted);font-size:12px;font-weight:600;margin-top:6px;cursor:pointer;}
+  .about-me-link svg:first-child{color:var(--accent);flex-shrink:0;}
+  .about-me-link .about-me-chevron{margin-left:2px;opacity:.6;}
   .advice{font-size:14px;line-height:1.55;text-align:left;margin:0 0 10px;}
   .advice-note{font-size:13px;line-height:1.5;color:var(--ink-muted);text-align:left;margin:0;}
   .advice-note strong{color:var(--ink);}
@@ -356,7 +359,8 @@ var ICONS = {
   chevronLeft:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m15 6-6 6 6 6"/></svg>',
   chevronRight:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg>',
   camera:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>',
-  barcode:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M3 5v14M7 5v14M11 5v10M15 5v14M18 5v10M21 5v14"/></svg>'
+  barcode:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M3 5v14M7 5v14M11 5v10M15 5v14M18 5v10M21 5v14"/></svg>',
+  user:'<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-6 8-6s8 2 8 6"/></svg>'
 };
 
 // ---------- exercise tips data ----------
@@ -416,7 +420,7 @@ var EXERCISES = {
 };
 
 // ---------- state ----------
-var state = { profile:null, entries:[], saveError:'', editingProfile:false, confirmReset:false, showExerciseModal:false, exerciseTab:'upper', exerciseDetail:null, showBmiModal:false,
+var state = { profile:null, entries:[], saveError:'', editingProfile:false, confirmReset:false, showExerciseModal:false, exerciseTab:'upper', exerciseDetail:null, showBmiModal:false, showAboutMeModal:false,
   foodLog:{}, showAddFoodModal:false, foodDraft:null, foodAiLoading:false, foodAiError:'', showAiSettingsModal:false, aiKeys:{gemini:'',groq:'',openrouter:''}, showFoodHistoryModal:false, selectedFoodDate:null,
   foodLookupLoading:null, foodLookupError:'', foodLookupNote:'',
   foodInputMode:'text', foodPhoto:null, barcodePhoto:null, knownFoods:{}, showAlcoholModal:false, alcoholSearchQuery:'', alcoholAddedName:'', addFoodMealType:null, editingFoodId:null, editingFoodDay:null, calAdjustChoices:{}, dayTypes:{},
@@ -1808,7 +1812,9 @@ function renderMain(){
   var plan = calcCaloriePlan(profile, latest.weight);
 
   var html = '<div class="page">';
-  html += '<header class="header fade-up"><div><div class="eyebrow">Sledování hmotnosti · <span id="live-clock">'+formatTimeHMS(new Date())+'</span></div><div style="display:flex;align-items:center;gap:10px"><h1 class="hello" style="margin:0">Ahoj, '+esc(profile.name)+'</h1><canvas id="matrix-rain" width="54" height="34" style="display:block;border-radius:8px;background:#000;flex-shrink:0"></canvas></div></div>'+
+  html += '<header class="header fade-up"><div><div class="eyebrow">Sledování hmotnosti · <span id="live-clock">'+formatTimeHMS(new Date())+'</span></div><div style="display:flex;align-items:center;gap:10px"><h1 class="hello" style="margin:0">Ahoj, '+esc(profile.name)+'</h1><canvas id="matrix-rain" width="54" height="34" style="display:block;border-radius:8px;background:#000;flex-shrink:0"></canvas></div>'+
+    '<button type="button" class="about-me-link" id="open-about-me-btn">'+ICONS.user+'<span>O mně · '+latest.weight+' kg · BMI '+bmi.toFixed(1)+'</span>'+ICONS.chevronRight.replace('width="16" height="16"','width="13" height="13" class="about-me-chevron"')+'</button>'+
+    '</div>'+
     '<button class="btn-icon" id="edit-profile-btn" aria-label="Upravit profil">'+ICONS.pencil+'</button></header>';
 
   if(state.saveError){
@@ -1899,14 +1905,7 @@ function renderMain(){
   '</section>';
 
   
-html += '<section class="card bmi-teaser fade-up">'+
-    '<div class="bmi-teaser-icon" style="background:'+cat.soft+';color:'+cat.color+'">'+bmi.toFixed(1)+'</div>'+
-    '<div class="exercise-teaser-text"><div class="card-title" style="margin-bottom:2px">Tvoje BMI</div>'+
-      '<p><span class="pill-dot" style="background:'+cat.color+';display:inline-block;margin-right:5px;"></span>'+cat.label+'</p></div>'+
-    '<button class="btn-secondary" id="open-bmi-btn">Zobrazit</button>'+
-  '</section>';
-
-  html += '<section class="card cal-hero fade-up">'+
+html += '<section class="card cal-hero fade-up">'+
     '<div class="eyebrow" style="margin-bottom:4px">Tvůj denní kalorický plán</div>'+
     '<div class="goal-pill" style="background:'+plan.goal.soft+';color:'+plan.goal.color+'"><span class="pill-dot" style="background:'+plan.goal.color+'"></span>'+plan.goal.label+'</div>'+
     '<div><span class="cal-hero-num">'+plan.target.toLocaleString('cs-CZ')+'</span></div>'+
@@ -1925,68 +1924,11 @@ html += '<section class="card bmi-teaser fade-up">'+
     '<div style="margin-top:14px"><button class="btn-secondary" id="open-goal-btn">'+ICONS.pencil+' Upravit cíl a aktivitu</button></div>'+
   '</section>';
 
-  var goalProgress = calcWeightGoalProgress(profile, first.weight, latest.weight, plan);
-  if(goalProgress){
-    var gp = goalProgress;
-    var gpBarColor = plan.goal.color;
-    var gpStatusHtml;
-    if(gp.reached){
-      gpStatusHtml = '<div class="cal-note" style="margin-top:12px"><strong style="color:'+COLORS.normal+'">Cílové váhy jsi dosáhl(a)! 🎉</strong> Teď je čas ji udržet.</div>';
-    } else if(gp.directionMismatch){
-      gpStatusHtml = '<div class="cal-warning">'+ICONS.alert+'<span>Cílová váha neodpovídá zvolenému cíli a tempu — zkontroluj nastavení v „Upravit cíl a aktivitu".</span></div>';
-    } else {
-      gpStatusHtml = '<div class="cal-note" style="margin-top:12px">Zbývá <strong>'+Math.abs(gp.diffToGo).toFixed(1)+' kg</strong>'+(gp.weeksLeft?' · odhad <strong>~'+gp.weeksLeft+' '+(gp.weeksLeft===1?'týden':(gp.weeksLeft<5?'týdny':'týdnů'))+'</strong> při aktuálním tempu.':'.')+'</div>';
-    }
-    html += '<section class="card fade-up">'+
-      '<div class="card-title" style="margin-bottom:14px">Cíl váhy</div>'+
-      '<div class="goal-progress-row">'+
-        '<div><div class="cal-sub-label">Teď</div><div class="cal-sub-value">'+latest.weight+' kg</div></div>'+
-        '<div style="text-align:right"><div class="cal-sub-label">Cíl</div><div class="cal-sub-value">'+gp.targetWeight+' kg</div></div>'+
-      '</div>'+
-      '<div class="goal-progress-track"><div class="goal-progress-fill" style="width:'+gp.pct+'%;background:'+gpBarColor+'"></div></div>'+
-      gpStatusHtml+
-    '</section>';
-  }
-
-html += '<section class="stat-grid fade-up">'+
-    '<div class="stat-card"><div class="stat-label">Aktuální váha</div><div class="stat-value">'+latest.weight+' <span>kg</span></div><div class="stat-sub">'+formatDateFull(latest.date)+'</div></div>'+
-    '<div class="stat-card"><div class="stat-label">Změna od začátku</div><div class="stat-value" style="color:'+deltaColor+'">'+deltaIcon+' '+Math.abs(delta)+' <span>kg</span></div><div class="stat-sub">od '+formatDateFull(first.date)+'</div></div>'+
-    '<div class="stat-card"><div class="stat-label">Počet záznamů</div><div class="stat-value">'+entries.length+'</div><div class="stat-sub">celkem</div></div>'+
-  '</section>';
-
-  html += '<section class="card exercise-teaser fade-up">'+
+html += '<section class="card exercise-teaser fade-up">'+
     '<div class="exercise-teaser-icon">'+ICONS.dumbbell+'</div>'+
     '<div class="exercise-teaser-text"><div class="card-title">Tipy na cvičení</div><p>Cviky na horní i dolní partie, doma bez posilovny.</p></div>'+
     '<button class="btn-secondary" id="open-exercise-btn">Zobrazit</button>'+
   '</section>';
-
-  html += '<section class="card fade-up"><div class="card-title">Zapsat váhu</div>'+
-    '<form class="entry-form" id="entry-form">'+
-      '<label class="field"><span>Datum</span><input class="input" id="entry-date" type="date" value="'+todayLocalISO()+'" max="'+todayLocalISO()+'"></label>'+
-      '<label class="field"><span>Váha (kg)</span><input class="input" id="entry-weight" type="number" inputmode="decimal" step="0.1" placeholder="např. 78.5"></label>'+
-      '<button class="btn-primary" type="submit">'+ICONS.plus+' Přidat</button>'+
-    '</form><div id="entry-error"></div>'+
-  '</section>';
-
-  html += '<section class="card fade-up"><div class="card-title" style="margin-bottom:10px">Progres v čase</div>'+
-    '<div class="seg" id="weight-chart-range-seg" style="margin-bottom:12px">'+
-      '<button type="button" class="seg-btn'+(weightChartRange==='days'?' active':'')+'" data-range="days">Dny</button>'+
-      '<button type="button" class="seg-btn'+(weightChartRange==='months'?' active':'')+'" data-range="months">Měsíce</button>'+
-      '<button type="button" class="seg-btn'+(weightChartRange==='years'?' active':'')+'" data-range="years">Roky</button>'+
-    '</div>';
-  if(chartSvg){
-    html += '<div class="chart-wrap">'+chartSvg+'<div class="chart-legend"><span class="legend-swatch"></span> doporučené pásmo hmotnosti</div></div>';
-  } else {
-    html += '<div class="empty-state">Přidej ještě aspoň jeden záznam v tomto zobrazení a uvidíš graf progresu.</div>';
-  }
-  html += '</section>';
-
-  html += '<section class="card fade-up"><div class="card-title">Historie záznamů</div><div class="history-list">';
-  asc.forEach(function(entry){
-    html += '<div class="history-item"><div><div class="history-weight">'+entry.weight+' kg</div><div class="history-date">'+formatDateFull(entry.date)+'</div></div>'+
-      '<button class="btn-icon subtle" data-delete-id="'+entry.id+'" aria-label="Smazat záznam">'+ICONS.trash+'</button></div>';
-  });
-  html += '</div></section>';
 
   html += '<footer class="footer-note">Údaje se ukládají pouze v tomto prohlížeči. Výpočty a doporučení jsou obecná a nenahrazují konzultaci s lékařem.</footer>';
   html += '</div>';
@@ -1996,6 +1938,9 @@ html += '<section class="stat-grid fade-up">'+
   }
   if(state.showExerciseModal){
     html += renderExerciseModal();
+  }
+  if(state.showAboutMeModal){
+    html += renderAboutMeModal(bmi, cat, profile, minNormal, maxNormal, plan, latest, first, delta, deltaIcon, deltaColor, entries, asc, chartSvg, weightChartRange);
   }
   if(state.showBmiModal){
     html += renderBmiModal(bmi, cat, profile, minNormal, maxNormal);
@@ -2371,6 +2316,83 @@ function renderBmiModal(bmi, cat, profile, minNormal, maxNormal){
   '</div>';
 }
 
+function renderAboutMeModal(bmi, cat, profile, minNormal, maxNormal, plan, latest, first, delta, deltaIcon, deltaColor, entries, asc, chartSvg, weightChartRange){
+  var goalProgress = calcWeightGoalProgress(profile, first.weight, latest.weight, plan);
+  var goalHtml = '';
+  if(goalProgress){
+    var gp = goalProgress;
+    var gpBarColor = plan.goal.color;
+    var gpStatusHtml;
+    if(gp.reached){
+      gpStatusHtml = '<div class="cal-note" style="margin-top:12px"><strong style="color:'+COLORS.normal+'">Cílové váhy jsi dosáhl(a)! 🎉</strong> Teď je čas ji udržet.</div>';
+    } else if(gp.directionMismatch){
+      gpStatusHtml = '<div class="cal-warning">'+ICONS.alert+'<span>Cílová váha neodpovídá zvolenému cíli a tempu — zkontroluj nastavení v „Upravit cíl a aktivitu".</span></div>';
+    } else {
+      gpStatusHtml = '<div class="cal-note" style="margin-top:12px">Zbývá <strong>'+Math.abs(gp.diffToGo).toFixed(1)+' kg</strong>'+(gp.weeksLeft?' · odhad <strong>~'+gp.weeksLeft+' '+(gp.weeksLeft===1?'týden':(gp.weeksLeft<5?'týdny':'týdnů'))+'</strong> při aktuálním tempu.':'.')+'</div>';
+    }
+    goalHtml = '<section class="card" style="margin-bottom:14px">'+
+      '<div class="card-title" style="margin-bottom:14px">Cíl váhy</div>'+
+      '<div class="goal-progress-row">'+
+        '<div><div class="cal-sub-label">Teď</div><div class="cal-sub-value">'+latest.weight+' kg</div></div>'+
+        '<div style="text-align:right"><div class="cal-sub-label">Cíl</div><div class="cal-sub-value">'+gp.targetWeight+' kg</div></div>'+
+      '</div>'+
+      '<div class="goal-progress-track"><div class="goal-progress-fill" style="width:'+gp.pct+'%;background:'+gpBarColor+'"></div></div>'+
+      gpStatusHtml+
+    '</section>';
+  }
+
+  var statGridHtml = '<section class="stat-grid" style="margin-bottom:14px">'+
+    '<div class="stat-card"><div class="stat-label">Aktuální váha</div><div class="stat-value">'+latest.weight+' <span>kg</span></div><div class="stat-sub">'+formatDateFull(latest.date)+'</div></div>'+
+    '<div class="stat-card"><div class="stat-label">Změna od začátku</div><div class="stat-value" style="color:'+deltaColor+'">'+deltaIcon+' '+Math.abs(delta)+' <span>kg</span></div><div class="stat-sub">od '+formatDateFull(first.date)+'</div></div>'+
+    '<div class="stat-card"><div class="stat-label">Počet záznamů</div><div class="stat-value">'+entries.length+'</div><div class="stat-sub">celkem</div></div>'+
+  '</section>';
+
+  var bmiHtml = '<section class="card bmi-teaser" style="margin-bottom:14px">'+
+    '<div class="bmi-teaser-icon" style="background:'+cat.soft+';color:'+cat.color+'">'+bmi.toFixed(1)+'</div>'+
+    '<div class="exercise-teaser-text"><div class="card-title" style="margin-bottom:2px">Tvoje BMI</div>'+
+      '<p><span class="pill-dot" style="background:'+cat.color+';display:inline-block;margin-right:5px;"></span>'+cat.label+'</p></div>'+
+    '<button class="btn-secondary" id="open-bmi-btn">Zobrazit</button>'+
+  '</section>';
+
+  var entryFormHtml = '<section class="card" style="margin-bottom:14px"><div class="card-title">Zapsat váhu</div>'+
+    '<form class="entry-form" id="entry-form">'+
+      '<label class="field"><span>Datum</span><input class="input" id="entry-date" type="date" value="'+todayLocalISO()+'" max="'+todayLocalISO()+'"></label>'+
+      '<label class="field"><span>Váha (kg)</span><input class="input" id="entry-weight" type="number" inputmode="decimal" step="0.1" placeholder="např. 78.5"></label>'+
+      '<button class="btn-primary" type="submit">'+ICONS.plus+' Přidat</button>'+
+    '</form><div id="entry-error"></div>'+
+  '</section>';
+
+  var chartHtml = '<section class="card" style="margin-bottom:14px"><div class="card-title" style="margin-bottom:10px">Progres v čase</div>'+
+    '<div class="seg" id="weight-chart-range-seg" style="margin-bottom:12px">'+
+      '<button type="button" class="seg-btn'+(weightChartRange==='days'?' active':'')+'" data-range="days">Dny</button>'+
+      '<button type="button" class="seg-btn'+(weightChartRange==='months'?' active':'')+'" data-range="months">Měsíce</button>'+
+      '<button type="button" class="seg-btn'+(weightChartRange==='years'?' active':'')+'" data-range="years">Roky</button>'+
+    '</div>';
+  if(chartSvg){
+    chartHtml += '<div class="chart-wrap">'+chartSvg+'<div class="chart-legend"><span class="legend-swatch"></span> doporučené pásmo hmotnosti</div></div>';
+  } else {
+    chartHtml += '<div class="empty-state">Přidej ještě aspoň jeden záznam v tomto zobrazení a uvidíš graf progresu.</div>';
+  }
+  chartHtml += '</section>';
+
+  var historyHtml = '<section class="card"><div class="card-title">Historie záznamů</div><div class="history-list">';
+  asc.forEach(function(entry){
+    historyHtml += '<div class="history-item"><div><div class="history-weight">'+entry.weight+' kg</div><div class="history-date">'+formatDateFull(entry.date)+'</div></div>'+
+      '<button class="btn-icon subtle" data-delete-id="'+entry.id+'" aria-label="Smazat záznam">'+ICONS.trash+'</button></div>';
+  });
+  historyHtml += '</div></section>';
+
+  return '<div class="modal-overlay" id="about-me-overlay">'+
+    '<div class="modal modal-lg" id="about-me-modal-box">'+
+      '<div class="modal-header"><div class="card-title" style="margin:0">O mně</div>'+
+        '<button class="btn-icon subtle" id="about-me-close-btn" aria-label="Zavřít">'+ICONS.x+'</button></div>'+
+      '<div class="modal-lg-body">'+
+        goalHtml + statGridHtml + bmiHtml + entryFormHtml + chartHtml + historyHtml +
+      '</div>'+
+    '</div>'+
+  '</div>';
+}
+
 function renderEditModal(profile){
   var confirmBlock = state.confirmReset ?
     '<div class="confirm-row"><span>Opravdu smazat profil i historii vah?</span><div class="row-btns"><button class="btn-ghost-danger" id="reset-confirm-btn">Ano, smazat</button><button class="btn-ghost" id="reset-cancel-btn">Zrušit</button></div></div>' :
@@ -2419,6 +2441,16 @@ function attachMainEvents(){
 
   var openBmiBtn = document.getElementById('open-bmi-btn');
   if(openBmiBtn) openBmiBtn.addEventListener('click', function(){ state.showBmiModal=true; render(); });
+
+  var openAboutMeBtn = document.getElementById('open-about-me-btn');
+  if(openAboutMeBtn) openAboutMeBtn.addEventListener('click', function(){ state.showAboutMeModal=true; render(); });
+
+  var aboutMeOverlay = document.getElementById('about-me-overlay');
+  if(aboutMeOverlay){
+    aboutMeOverlay.addEventListener('click', function(e){ if(e.target===aboutMeOverlay){ state.showAboutMeModal=false; render(); } });
+    var aboutMeCloseBtn = document.getElementById('about-me-close-btn');
+    if(aboutMeCloseBtn) aboutMeCloseBtn.addEventListener('click', function(){ state.showAboutMeModal=false; render(); });
+  }
 
   var bmiOverlay = document.getElementById('bmi-overlay');
   if(bmiOverlay){
