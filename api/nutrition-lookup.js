@@ -187,26 +187,6 @@ async function fetchViaReader(url, timeoutMs, waitSeconds) {
   }
 }
 
-// Rychlejší varianta bez plného prohlížeče - stačí na statické/SSR stránky
-// jako výsledky vyhledávání (DuckDuckGo), kde nepotřebujeme čekat na JS.
-async function fetchViaReaderDirect(url, timeoutMs) {
-  const controller = new AbortController();
-  const timer = setTimeout(function () { controller.abort(); }, timeoutMs || 12000);
-  try {
-    const res = await fetch(JINA_READER_PREFIX + url, {
-      headers: { 'Accept': 'text/plain', 'X-Engine': 'direct', 'X-No-Cache': 'true' },
-      redirect: 'follow',
-      signal: controller.signal
-    });
-    clearTimeout(timer);
-    const text = await res.text();
-    return { ok: res.ok, status: res.status, text: text };
-  } catch (e) {
-    clearTimeout(timer);
-    return { ok: false, status: 0, text: '', error: String(e && e.message || e) };
-  }
-}
-
 // Najde číslo, které stojí v textu blízko za daným labelem (funguje na
 // vykresleném textu z Jina Readeru, ne na syrovém HTML/Angular markupu).
 function findNumberNearLabel(text, labelPatterns) {
@@ -260,41 +240,76 @@ async function fetchAndParseKtPage(slug, debugParts, label) {
   return data;
 }
 
-// Najde kandidátní odkazy na /potraviny/ přes DuckDuckGo site-search,
-// routováno přes Jina Reader (obchází HTTP 403 blokaci datacenterových IP
-// z Vercelu, na kterou DuckDuckGo narážel při přímém volání).
+// Najde kandidátní odkazy na /potraviny/ přes vyhledávače, routováno přes
+// Jina Reader (obchází blokaci datacenterových IP z Vercelu). DuckDuckGo i
+// Bing často odkazy nezobrazují přímo, ale zabalené do vlastního
+// přesměrovacího odkazu (DuckDuckGo: "uddg=<cílová URL>", Bing: "u=a1<cílová
+// URL v base64>") - proto je potřeba každý nalezený odkaz nejdřív "rozbalit".
+function resolveWrappedUrl(href) {
+  if (!href) return href;
+  const uddgM = /[?&]uddg=([^&]+)/i.exec(href);
+  if (uddgM) {
+    let v = uddgM[1];
+    try { v = decodeURIComponent(v); } catch (e) { /* uddg bývá i nekódované, to je ok */ }
+    return v;
+  }
+  const bingM = /[?&]u=a1([^&]+)/i.exec(href);
+  if (bingM) {
+    let b64 = bingM[1].replace(/-/g, '+').replace(/_/g, '/');
+    while (b64.length % 4) b64 += '=';
+    try { return Buffer.from(b64, 'base64').toString('utf8'); } catch (e) { /* nešlo dekódovat, necháme původní href */ }
+  }
+  return href;
+}
+
 function extractKtLinksFromReaderText(text) {
   const out = [];
   const seen = {};
-  // markdown odkazy ve tvaru [Název](https://www.kaloricketabulky.cz/potraviny/slug)
-  const linkRe = /\[([^\]]+)\]\((https?:\/\/(?:www\.)?kaloricketabulky\.cz\/potraviny\/([a-z0-9-]+))[^)]*\)/gi;
+  const addFromUrl = function (rawUrl, name) {
+    const resolved = resolveWrappedUrl(rawUrl);
+    const slugM = /kaloricketabulky\.cz\/potraviny\/([a-z0-9-]+)/i.exec(resolved);
+    if (!slugM) return;
+    const slug = slugM[1].toLowerCase();
+    if (seen[slug]) return;
+    seen[slug] = true;
+    out.push({ slug: slug, name: (name && name.trim()) || slug.replace(/-/g, ' ') });
+  };
+  // markdown odkazy: [Název](URL)
+  const linkRe = /\[([^\]]+)\]\((\S+?)\)/g;
   let m;
-  while ((m = linkRe.exec(text))) {
-    const slug = m[3];
-    if (seen[slug]) continue;
-    seen[slug] = true;
-    out.push({ slug: slug, name: decodeHtmlEntities(m[1].trim()) || slug.replace(/-/g, ' ') });
-  }
-  if (out.length) return out;
-  // fallback: i holé URL bez markdown odkazu
-  const bareRe = /https?:\/\/(?:www\.)?kaloricketabulky\.cz\/potraviny\/([a-z0-9-]+)/gi;
-  while ((m = bareRe.exec(text))) {
-    const slug = m[1];
-    if (seen[slug]) continue;
-    seen[slug] = true;
-    out.push({ slug: slug, name: slug.replace(/-/g, ' ') });
-  }
+  while ((m = linkRe.exec(text))) addFromUrl(m[2], decodeHtmlEntities(m[1]));
+  // fallback: i holé URL bez markdown odkazu (kdyby Reader odkaz nepřevedl na markdown)
+  const bareRe = /https?:\/\/[^\s)]+/g;
+  while ((m = bareRe.exec(text))) addFromUrl(m[0], null);
   return out;
 }
 
 async function findKtCandidatesViaSearch(query) {
-  const searchUrl = 'https://duckduckgo.com/html/?q=' +
+  const debugParts = [];
+
+  const bingUrl = 'https://www.bing.com/search?q=' +
     encodeURIComponent('site:kaloricketabulky.cz/potraviny ' + query);
-  const res = await fetchViaReaderDirect(searchUrl, 12000);
-  if (!res.ok) return { links: [], debug: 'DuckDuckGo (přes Reader) HTTP ' + res.status };
-  const links = extractKtLinksFromReaderText(res.text);
-  if (!links.length) return { links: [], debug: 'DuckDuckGo (přes Reader) HTTP ' + res.status + ', 0 odkazů (' + res.text.length + ' znaků odpovědi)' };
-  return { links: links, debug: null };
+  const bingRes = await fetchViaReader(bingUrl, 15000, 8);
+  if (bingRes.ok) {
+    const links = extractKtLinksFromReaderText(bingRes.text);
+    if (links.length) return { links: links, debug: null };
+    debugParts.push('Bing (přes Reader) HTTP ' + bingRes.status + ', 0 odkazů (' + bingRes.text.length + ' znaků, začátek: "' + bingRes.text.slice(0, 160).replace(/\s+/g, ' ') + '")');
+  } else {
+    debugParts.push('Bing (přes Reader) HTTP ' + bingRes.status);
+  }
+
+  const ddgUrl = 'https://html.duckduckgo.com/html/?q=' +
+    encodeURIComponent('site:kaloricketabulky.cz/potraviny ' + query);
+  const ddgRes = await fetchViaReader(ddgUrl, 15000, 8);
+  if (ddgRes.ok) {
+    const links = extractKtLinksFromReaderText(ddgRes.text);
+    if (links.length) return { links: links, debug: null };
+    debugParts.push('DuckDuckGo (přes Reader) HTTP ' + ddgRes.status + ', 0 odkazů (' + ddgRes.text.length + ' znaků, začátek: "' + ddgRes.text.slice(0, 160).replace(/\s+/g, ' ') + '")');
+  } else {
+    debugParts.push('DuckDuckGo (přes Reader) HTTP ' + ddgRes.status);
+  }
+
+  return { links: [], debug: debugParts.join('; ') };
 }
 
 // Vrátí seznam kandidátů (název + slug) pro živý našeptávač v UI - nejprve
