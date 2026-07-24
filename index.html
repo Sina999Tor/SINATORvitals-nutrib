@@ -4,6 +4,13 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Sinator Vitals — BMI a sledování váhy</title>
+<link rel="manifest" href="/manifest.json">
+<meta name="theme-color" content="#0A0F0D">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Vitals">
+<link rel="apple-touch-icon" href="/icon-192.png">
+<link rel="icon" href="/icon-192.png" type="image/png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/@zxing/library@0.20.0/umd/index.min.js"></script>
@@ -138,6 +145,14 @@
     display:flex;align-items:center;justify-content:center;
     font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:14px;font-variant-numeric:tabular-nums;
   }
+  .install-banner{display:flex;align-items:center;gap:14px;}
+  .install-banner-icon{
+    width:44px;height:44px;border-radius:12px;flex-shrink:0;background:var(--accent-soft);color:var(--accent);
+    display:flex;align-items:center;justify-content:center;
+  }
+  .install-banner-text{flex:1;min-width:0;}
+  .install-banner-text p{font-size:12.5px;color:var(--ink-muted);margin:0;line-height:1.4;}
+  .install-banner .btn-primary{white-space:nowrap;flex-shrink:0;padding:9px 14px;font-size:13px;}
   .btn-secondary{
     display:inline-flex;align-items:center;justify-content:center;gap:6px;white-space:nowrap;
     background:var(--accent-soft);color:var(--accent);border:1px solid rgba(62,226,154,.25);border-radius:12px;
@@ -360,7 +375,9 @@ var ICONS = {
   chevronRight:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg>',
   camera:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>',
   barcode:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M3 5v14M7 5v14M11 5v10M15 5v14M18 5v10M21 5v14"/></svg>',
-  user:'<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-6 8-6s8 2 8 6"/></svg>'
+  user:'<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-6 8-6s8 2 8 6"/></svg>',
+  download:'<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg>',
+  iosShare:'<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" style="display:inline;vertical-align:-2px"><path d="M12 16V4"/><path d="m8 8 4-4 4 4"/><rect x="5" y="12" width="14" height="8" rx="2"/></svg>'
 };
 
 // ---------- exercise tips data ----------
@@ -420,7 +437,7 @@ var EXERCISES = {
 };
 
 // ---------- state ----------
-var state = { profile:null, entries:[], saveError:'', editingProfile:false, confirmReset:false, showExerciseModal:false, exerciseTab:'upper', exerciseDetail:null, showBmiModal:false, showAboutMeModal:false,
+var state = { profile:null, entries:[], saveError:'', editingProfile:false, confirmReset:false, showExerciseModal:false, exerciseTab:'upper', exerciseDetail:null, showBmiModal:false, showAboutMeModal:false, canInstall:false, showIosInstallHint:false,
   foodLog:{}, showAddFoodModal:false, foodDraft:null, foodAiLoading:false, foodAiError:'', showAiSettingsModal:false, aiKeys:{gemini:'',groq:'',openrouter:''}, showFoodHistoryModal:false, selectedFoodDate:null,
   foodLookupLoading:null, foodLookupError:'', foodLookupNote:'',
   foodInputMode:'text', foodPhoto:null, barcodePhoto:null, knownFoods:{}, showAlcoholModal:false, alcoholSearchQuery:'', alcoholAddedName:'', addFoodMealType:null, editingFoodId:null, editingFoodDay:null, calAdjustChoices:{}, dayTypes:{},
@@ -1821,6 +1838,16 @@ function renderMain(){
     html += '<div class="error-banner fade-up">'+ICONS.alert+'<span>'+esc(state.saveError)+'</span></div>';
   }
 
+  if(state.canInstall || state.showIosInstallHint){
+    html += '<section class="card install-banner fade-up">'+
+      '<div class="install-banner-icon">'+ICONS.download+'</div>'+
+      '<div class="install-banner-text"><div class="card-title" style="margin-bottom:2px">Nainstalovat aplikaci</div>'+
+        '<p>'+(state.canInstall ? 'Přidej si Sinator Vitals na plochu a otevírej ji jako appku, i offline.' : 'Klepni na Sdílet '+ICONS.iosShare+' dole v prohlížeči a zvol „Přidat na plochu".')+'</p></div>'+
+      (state.canInstall ? '<button class="btn-primary" id="install-app-btn">Nainstalovat</button>' : '')+
+      '<button class="btn-icon subtle" id="dismiss-install-btn" aria-label="Zavřít">'+ICONS.x+'</button>'+
+    '</section>';
+  }
+
   var todayIso = todayLocalISO();
   var foodDay = state.selectedFoodDate || todayIso;
   var isToday = foodDay===todayIso;
@@ -2438,6 +2465,26 @@ function renderEditModal(profile){
 function attachMainEvents(){
   var editBtn = document.getElementById('edit-profile-btn');
   if(editBtn) editBtn.addEventListener('click', function(){ state.editingProfile=true; state.confirmReset=false; render(); });
+
+  var installBtn = document.getElementById('install-app-btn');
+  if(installBtn) installBtn.addEventListener('click', function(){
+    if(!deferredInstallPrompt) return;
+    installBtn.disabled = true;
+    deferredInstallPrompt.prompt();
+    deferredInstallPrompt.userChoice.then(function(){
+      deferredInstallPrompt = null;
+      state.canInstall = false;
+      render();
+    }).catch(function(){ state.canInstall = false; render(); });
+  });
+
+  var dismissInstallBtn = document.getElementById('dismiss-install-btn');
+  if(dismissInstallBtn) dismissInstallBtn.addEventListener('click', function(){
+    state.canInstall = false;
+    state.showIosInstallHint = false;
+    try{ localStorage.setItem('sv_install_dismissed', '1'); }catch(e){}
+    render();
+  });
 
   var goalBtn = document.getElementById('open-goal-btn');
   if(goalBtn) goalBtn.addEventListener('click', function(){ state.editingProfile=true; state.confirmReset=false; render(); });
@@ -3591,6 +3638,40 @@ function tickLiveWidgets(){
   }
 }
 setInterval(tickLiveWidgets, 1000);
+
+// ---------- PWA instalace ----------
+var deferredInstallPrompt = null;
+function isStandaloneDisplay(){
+  return window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+}
+function isInstallDismissed(){
+  try{ return localStorage.getItem('sv_install_dismissed')==='1'; }catch(e){ return false; }
+}
+window.addEventListener('beforeinstallprompt', function(e){
+  e.preventDefault();
+  deferredInstallPrompt = e;
+  if(!isStandaloneDisplay() && !isInstallDismissed()){
+    state.canInstall = true;
+    render();
+  }
+});
+window.addEventListener('appinstalled', function(){
+  state.canInstall = false;
+  state.showIosInstallHint = false;
+  deferredInstallPrompt = null;
+  render();
+});
+(function initIosInstallHint(){
+  var isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent) && !window.MSStream;
+  if(isIOS && !isStandaloneDisplay() && !isInstallDismissed()){
+    state.showIosInstallHint = true;
+  }
+})();
+if('serviceWorker' in navigator){
+  window.addEventListener('load', function(){
+    navigator.serviceWorker.register('/sw.js').catch(function(){});
+  });
+}
 
 loadState();
 render();
