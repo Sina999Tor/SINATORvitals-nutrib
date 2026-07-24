@@ -2341,10 +2341,12 @@ function renderAboutMeModal(bmi, cat, profile, minNormal, maxNormal, plan, lates
     '</section>';
   }
 
-  var statGridHtml = '<section class="stat-grid" style="margin-bottom:14px">'+
-    '<div class="stat-card"><div class="stat-label">Aktuální váha</div><div class="stat-value">'+latest.weight+' <span>kg</span></div><div class="stat-sub">'+formatDateFull(latest.date)+'</div></div>'+
-    '<div class="stat-card"><div class="stat-label">Změna od začátku</div><div class="stat-value" style="color:'+deltaColor+'">'+deltaIcon+' '+Math.abs(delta)+' <span>kg</span></div><div class="stat-sub">od '+formatDateFull(first.date)+'</div></div>'+
-    '<div class="stat-card"><div class="stat-label">Počet záznamů</div><div class="stat-value">'+entries.length+'</div><div class="stat-sub">celkem</div></div>'+
+  var deltaCardHtml = '<section class="card" style="margin-bottom:14px">'+
+    '<div class="stat-label" style="margin-bottom:8px">Změna od začátku</div>'+
+    '<div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap">'+
+      '<div class="stat-value" style="font-size:22px;color:'+deltaColor+'">'+deltaIcon+' '+Math.abs(delta)+' <span>kg</span></div>'+
+      '<div class="stat-sub" style="margin-top:0">od '+formatDateFull(first.date)+'</div>'+
+    '</div>'+
   '</section>';
 
   var bmiHtml = '<section class="card bmi-teaser" style="margin-bottom:14px">'+
@@ -2362,7 +2364,18 @@ function renderAboutMeModal(bmi, cat, profile, minNormal, maxNormal, plan, lates
     '</form><div id="entry-error"></div>'+
   '</section>';
 
-  var chartHtml = '<section class="card" style="margin-bottom:14px"><div class="card-title" style="margin-bottom:10px">Progres v čase</div>'+
+  var historyHtml = '<section class="card" style="margin-bottom:14px">'+
+    '<div class="food-header-row" style="align-items:center;margin-bottom:10px"><div class="card-title" style="margin:0">Historie záznamů</div>'+
+      '<span class="stat-sub" style="margin-top:0">'+entries.length+' '+(entries.length===1?'záznam':(entries.length>=2&&entries.length<=4?'záznamy':'záznamů'))+'</span>'+
+    '</div>'+
+    '<div class="history-list">';
+  asc.forEach(function(entry){
+    historyHtml += '<div class="history-item"><div><div class="history-weight">'+entry.weight+' kg</div><div class="history-date">'+formatDateFull(entry.date)+'</div></div>'+
+      '<button class="btn-icon subtle" data-delete-id="'+entry.id+'" aria-label="Smazat záznam">'+ICONS.trash+'</button></div>';
+  });
+  historyHtml += '</div></section>';
+
+  var chartHtml = '<section class="card"><div class="card-title" style="margin-bottom:10px">Progres v čase</div>'+
     '<div class="seg" id="weight-chart-range-seg" style="margin-bottom:12px">'+
       '<button type="button" class="seg-btn'+(weightChartRange==='days'?' active':'')+'" data-range="days">Dny</button>'+
       '<button type="button" class="seg-btn'+(weightChartRange==='months'?' active':'')+'" data-range="months">Měsíce</button>'+
@@ -2375,19 +2388,12 @@ function renderAboutMeModal(bmi, cat, profile, minNormal, maxNormal, plan, lates
   }
   chartHtml += '</section>';
 
-  var historyHtml = '<section class="card"><div class="card-title">Historie záznamů</div><div class="history-list">';
-  asc.forEach(function(entry){
-    historyHtml += '<div class="history-item"><div><div class="history-weight">'+entry.weight+' kg</div><div class="history-date">'+formatDateFull(entry.date)+'</div></div>'+
-      '<button class="btn-icon subtle" data-delete-id="'+entry.id+'" aria-label="Smazat záznam">'+ICONS.trash+'</button></div>';
-  });
-  historyHtml += '</div></section>';
-
   return '<div class="modal-overlay" id="about-me-overlay">'+
     '<div class="modal modal-lg" id="about-me-modal-box">'+
       '<div class="modal-header"><div class="card-title" style="margin:0">O mně</div>'+
         '<button class="btn-icon subtle" id="about-me-close-btn" aria-label="Zavřít">'+ICONS.x+'</button></div>'+
       '<div class="modal-lg-body">'+
-        goalHtml + statGridHtml + bmiHtml + entryFormHtml + chartHtml + historyHtml +
+        goalHtml + bmiHtml + deltaCardHtml + entryFormHtml + historyHtml + chartHtml +
       '</div>'+
     '</div>'+
   '</div>';
