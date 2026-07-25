@@ -53,6 +53,28 @@
   .about-me-link{display:inline-flex;align-items:center;gap:6px;padding:6px 10px 6px 8px;border-radius:100px;border:1px solid var(--line);background:var(--surface-2);color:var(--ink-muted);font-size:12px;font-weight:600;margin-top:6px;cursor:pointer;}
   .about-me-link svg:first-child{color:var(--accent);flex-shrink:0;}
   .about-me-link .about-me-chevron{margin-left:2px;opacity:.6;}
+  .dash-top-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;}
+  .dash-logo{display:flex;align-items:center;gap:8px;font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:14px;color:var(--ink-muted);letter-spacing:.02em;}
+  .dash-logo svg{color:var(--accent);flex-shrink:0;}
+  .dash-top-actions{display:flex;align-items:center;gap:8px;}
+  .dash-welcome{margin-bottom:16px;}
+  .dash-welcome-title{font-family:'Space Grotesk',sans-serif;font-size:24px;font-weight:700;margin:0 0 4px;}
+  .dash-welcome-subtitle{color:var(--ink-muted);font-size:12px;font-family:'JetBrains Mono',monospace;letter-spacing:.02em;}
+  .dash-highlight{color:var(--accent);}
+  .dash-stats-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-bottom:14px;}
+  .dash-stat-card{background:linear-gradient(180deg,var(--surface),var(--bg-2));border:1px solid var(--line);border-radius:18px;padding:16px;text-align:left;cursor:pointer;font-family:inherit;color:inherit;box-shadow:var(--shadow);transition:transform .12s;-webkit-tap-highlight-color:transparent;}
+  .dash-stat-card:active{transform:scale(.97);}
+  .dash-stat-card .card-header{display:flex;align-items:center;gap:8px;margin-bottom:12px;}
+  .dash-stat-card .card-icon{display:inline-flex;align-items:center;justify-content:center;}
+  .dash-bmi-value{font-family:'Space Grotesk',sans-serif;font-size:30px;font-weight:700;line-height:1;font-variant-numeric:tabular-nums;}
+  .dash-bmi-sub{font-size:11px;color:var(--ink-muted);margin-top:5px;}
+  .dash-weight-value{font-family:'Space Grotesk',sans-serif;font-size:24px;font-weight:700;line-height:1;font-variant-numeric:tabular-nums;}
+  .dash-weight-trend{font-size:11px;margin-top:8px;font-weight:600;}
+  .dash-actions{display:flex;gap:10px;margin-bottom:18px;}
+  .dash-actions .btn-primary,.dash-actions .btn-secondary{flex:1;}
+  @media (max-width:360px){
+    .dash-stats-grid{grid-template-columns:1fr;}
+  }
   .advice{font-size:14px;line-height:1.55;text-align:left;margin:0 0 10px;}
   .advice-note{font-size:13px;line-height:1.5;color:var(--ink-muted);text-align:left;margin:0;}
   .advice-note strong{color:var(--ink);}
@@ -377,7 +399,12 @@ var ICONS = {
   barcode:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M3 5v14M7 5v14M11 5v10M15 5v14M18 5v10M21 5v14"/></svg>',
   user:'<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-6 8-6s8 2 8 6"/></svg>',
   download:'<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg>',
-  iosShare:'<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" style="display:inline;vertical-align:-2px"><path d="M12 16V4"/><path d="m8 8 4-4 4 4"/><rect x="5" y="12" width="14" height="8" rx="2"/></svg>'
+  iosShare:'<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" style="display:inline;vertical-align:-2px"><path d="M12 16V4"/><path d="m8 8 4-4 4 4"/><rect x="5" y="12" width="14" height="8" rx="2"/></svg>',
+  bmi:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 2 7l10 5 10-5-10-5Z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>',
+  scale:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="4" r="2"/><circle cx="12" cy="20" r="2"/><path d="M2 12h20"/><circle cx="8" cy="12" r="2"/><circle cx="16" cy="12" r="2"/></svg>',
+  food:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="8" width="16" height="12" rx="2"/><path d="M18 4c1.1 0 2 .9 2 2v2M6 4c-1.1 0-2 .9-2 2v2"/><circle cx="12" cy="14" r="2"/></svg>',
+  wine:'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 10 6h4l-2-4Z"/><path d="M10 6 8 10h8l-2-4"/><path d="M8 10v8c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2v-8"/><path d="M10 18h4M12 22v-4"/></svg>',
+  flame:'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2s-4 4-4 10a4 4 0 0 0 8 0c0-6-4-10-4-10Z"/></svg>'
 };
 
 // ---------- exercise tips data ----------
@@ -620,7 +647,7 @@ function mealTypeInfo(key){
 function renderFoodItemHtml(f, day){
   var timeLabel = f.time ? isoTimeHM(f.time) : '';
   return '<div class="food-item"><div><div class="food-item-name">'+esc(f.name||'Jídlo')+'</div>'+
-    '<div class="food-item-macro">'+(timeLabel?timeLabel+' · ':'')+foodQtyLabel(f)+'B '+Math.round(f.protein||0)+' g · S '+Math.round(f.carbs||0)+' g · T '+Math.round(f.fat||0)+' g'+(f.alcohol ? ' · 🍷 '+Math.round(f.alcohol)+' g'+((f.volumeMl||f.abv) ? ' ('+(f.volumeMl?f.volumeMl+' ml':'')+(f.volumeMl&&f.abv?', ':'')+(f.abv?f.abv+' %':'')+')' : '') : '')+'</div>'+
+    '<div class="food-item-macro">'+(timeLabel?timeLabel+' · ':'')+foodQtyLabel(f)+'B '+Math.round(f.protein||0)+' g · S '+Math.round(f.carbs||0)+' g · T '+Math.round(f.fat||0)+' g'+(f.alcohol ? ' · '+Math.round(f.alcohol)+' g alk.'+((f.volumeMl||f.abv) ? ' ('+(f.volumeMl?f.volumeMl+' ml':'')+(f.volumeMl&&f.abv?', ':'')+(f.abv?f.abv+' %':'')+')' : '') : '')+'</div>'+
     (f.ingredients ? '<div class="food-item-macro" style="margin-top:2px">'+esc(f.ingredients)+'</div>' : '')+
     '</div>'+
     '<div style="display:flex;align-items:center;gap:6px"><div style="text-align:right"><div class="food-item-kcal">'+Math.round(f.kcal)+' kcal</div><div class="food-item-kj">'+kcalToKj(f.kcal)+' kJ</div></div>'+
@@ -754,7 +781,7 @@ function renderAlcoholModal(alc){
 
   return '<div class="modal-overlay" id="alcohol-overlay">'+
     '<div class="modal modal-lg" id="alcohol-modal-box">'+
-      '<div class="modal-header"><div class="card-title" style="margin:0">🍷 Alkohol v krvi</div>'+
+      '<div class="modal-header"><div class="card-title" style="margin:0;display:flex;align-items:center;gap:6px"><span style="color:#F59E0B;display:inline-flex">'+ICONS.wine+'</span>Alkohol v krvi</div>'+
         '<div style="display:flex;align-items:center;gap:8px">'+
           '<button class="btn-icon subtle" id="alcohol-add-btn" aria-label="Přidat alkohol">'+ICONS.plus+'</button>'+
           '<button class="btn-icon subtle" id="alcohol-close-btn" aria-label="Zavřít">'+ICONS.x+'</button>'+
@@ -1829,10 +1856,34 @@ function renderMain(){
   var plan = calcCaloriePlan(profile, latest.weight);
 
   var html = '<div class="page">';
-  html += '<header class="header fade-up"><div><div class="eyebrow">Sledování hmotnosti · <span id="live-clock">'+formatTimeHMS(new Date())+'</span></div><div style="display:flex;align-items:center;gap:10px"><h1 class="hello" style="margin:0">Ahoj, '+esc(profile.name)+'</h1><canvas id="matrix-rain" width="54" height="34" style="display:block;border-radius:8px;background:#000;flex-shrink:0"></canvas></div>'+
-    '<button type="button" class="about-me-link" id="open-about-me-btn">'+ICONS.user+'<span>O mně · '+latest.weight+' kg · BMI '+bmi.toFixed(1)+'</span>'+ICONS.chevronRight.replace('width="16" height="16"','width="13" height="13" class="about-me-chevron"')+'</button>'+
-    '</div>'+
-    '<button class="btn-icon" id="edit-profile-btn" aria-label="Upravit profil">'+ICONS.pencil+'</button></header>';
+  html += '<header class="dash-top-header fade-up">'+
+    '<div class="dash-logo"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3V21M5 12L12 5L19 12"/></svg><span>Sinator Vitals</span></div>'+
+    '<div class="dash-top-actions"><canvas id="matrix-rain" width="40" height="28" style="display:block;border-radius:6px;background:#000;flex-shrink:0"></canvas>'+
+    '<button class="btn-icon" id="edit-profile-btn" aria-label="Upravit profil">'+ICONS.pencil+'</button></div>'+
+  '</header>';
+
+  html += '<section class="dash-welcome fade-up">'+
+    '<h1 class="dash-welcome-title">Vítej zpět, <span class="dash-highlight">'+esc(profile.name)+'</span>!</h1>'+
+    '<p class="dash-welcome-subtitle">Sleduj svou váhu, BMI a kalorie na jednom místě · <span id="live-clock">'+formatTimeHMS(new Date())+'</span></p>'+
+  '</section>';
+
+  html += '<section class="dash-stats-grid fade-up">'+
+    '<button type="button" class="dash-stat-card" id="dash-bmi-card" aria-label="Zobrazit detail BMI">'+
+      '<div class="card-header"><span class="card-icon" style="color:var(--accent)">'+ICONS.bmi+'</span><h2 class="card-title" style="margin:0">BMI</h2></div>'+
+      '<div class="dash-bmi-value" style="color:'+cat.color+'">'+bmi.toFixed(1)+'</div>'+
+      '<div class="dash-bmi-sub">'+cat.label+'</div>'+
+    '</button>'+
+    '<button type="button" class="dash-stat-card" id="dash-weight-card" aria-label="Zobrazit sledování váhy">'+
+      '<div class="card-header"><span class="card-icon" style="color:var(--accent)">'+ICONS.scale+'</span><h2 class="card-title" style="margin:0">Aktuální váha</h2></div>'+
+      '<div class="dash-weight-value">'+latest.weight+' kg</div>'+
+      '<div class="dash-weight-trend" style="color:'+deltaColor+'">'+deltaIcon+' '+Math.abs(delta)+' kg od začátku</div>'+
+    '</button>'+
+  '</section>';
+
+  html += '<section class="dash-actions fade-up">'+
+    '<button class="btn-primary" id="open-about-me-btn">'+ICONS.plus+' Přidat váhu</button>'+
+    '<button class="btn-secondary" id="dash-add-food-btn">'+ICONS.food+' Přidat jídlo</button>'+
+  '</section>';
 
   if(state.saveError){
     html += '<div class="error-banner fade-up">'+ICONS.alert+'<span>'+esc(state.saveError)+'</span></div>';
@@ -1923,7 +1974,7 @@ function renderMain(){
     var alc = computeAlcoholStatus();
   var alcColor = alc.promile>0 ? (alc.promile>=1 ? COLORS.obese : COLORS.over) : COLORS.normal;
   html += '<section class="card fade-up" id="alcohol-card" style="padding:14px 16px;cursor:pointer" role="button" aria-label="Zobrazit detail alkoholu">'+
-    '<div class="food-header-row" style="align-items:center;margin-bottom:0"><div class="card-title" style="margin:0;font-size:13px">🍷 Alkohol v krvi</div>'+
+    '<div class="food-header-row" style="align-items:center;margin-bottom:0"><div class="card-title" style="margin:0;font-size:13px;display:flex;align-items:center;gap:5px"><span style="color:#F59E0B;display:inline-flex">'+ICONS.wine+'</span>Alkohol v krvi</div>'+
       '<div style="display:flex;align-items:center;gap:16px">'+
         '<div style="text-align:right"><div class="food-remaining-num" id="bac-value" style="font-size:20px;line-height:1;color:'+alcColor+'">'+alc.promile.toFixed(2).replace('.', ',')+'</div><div class="food-remaining-unit" style="font-size:9px">‰ ODHAD</div></div>'+
         '<div style="text-align:right"><div class="food-mini-label" style="font-size:9px">'+(alc.soberAt ? 'Střízlivý(á) od' : 'Stav')+'</div><div class="food-remaining-num" id="bac-sober-time" style="font-size:14px;line-height:1.2">'+(alc.soberAt ? formatTimeHM(alc.soberAt) : '—')+'</div><div class="food-remaining-unit" id="bac-status-note" style="font-size:9px">'+(alc.soberAt ? 'orientační čas' : 'nemáš alkohol')+'</div></div>'+
@@ -2047,7 +2098,7 @@ function renderAddFoodModal(){
     '<button type="button" class="seg-btn'+(mode==='text'?' active':'')+'" data-mode="text">Popis</button>'+
     '<button type="button" class="seg-btn'+(mode==='photo'?' active':'')+'" data-mode="photo">'+ICONS.camera+' Foto</button>'+
     '<button type="button" class="seg-btn'+(mode==='barcode'?' active':'')+'" data-mode="barcode">'+ICONS.barcode+' Kód</button>'+
-    '<button type="button" class="seg-btn'+(mode==='alcohol'?' active':'')+'" data-mode="alcohol">🍷 Alkohol</button>'+
+    '<button type="button" class="seg-btn'+(mode==='alcohol'?' active':'')+'" data-mode="alcohol"><span style="display:inline-flex;vertical-align:-2px;margin-right:3px">'+ICONS.wine+'</span>Alkohol</button>'+
   '</div>';
 
   var qtyUnitFields =
@@ -2536,15 +2587,23 @@ function attachMainEvents(){
     if(alcAddBtn2) alcAddBtn2.addEventListener('click', openAddFromAlcohol);
   }
 
-  var openAddFoodBtn = document.getElementById('open-add-food-btn');
-  if(openAddFoodBtn) openAddFoodBtn.addEventListener('click', function(){
+  function openAddFoodModal(){
     state.showAddFoodModal=true; state.foodDraft={}; state.foodAiError=''; state.foodAiLoading=false; state.foodLookupError=''; state.foodLookupNote=''; state.foodLookupLoading=null;
     state.foodInputMode='text'; state.foodPhoto=null; state.barcodePhoto=null;
     state.alcoholSearchQuery=''; state.alcoholAddedName='';
     state.addFoodMealType = guessMealType();
     state.editingFoodId=null; state.editingFoodDay=null;
     render();
-  });
+  }
+  var openAddFoodBtn = document.getElementById('open-add-food-btn');
+  if(openAddFoodBtn) openAddFoodBtn.addEventListener('click', openAddFoodModal);
+  var dashAddFoodBtn = document.getElementById('dash-add-food-btn');
+  if(dashAddFoodBtn) dashAddFoodBtn.addEventListener('click', openAddFoodModal);
+
+  var dashBmiCard = document.getElementById('dash-bmi-card');
+  if(dashBmiCard) dashBmiCard.addEventListener('click', function(){ state.showBmiModal=true; render(); });
+  var dashWeightCard = document.getElementById('dash-weight-card');
+  if(dashWeightCard) dashWeightCard.addEventListener('click', function(){ state.showAboutMeModal=true; render(); });
 
   document.querySelectorAll('[data-meal-add]').forEach(function(btn){
     btn.addEventListener('click', function(){
