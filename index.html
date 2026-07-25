@@ -394,6 +394,7 @@ function alcoholPresetSearch(query){
 }
 
 var ICONS = {
+  bell:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>',
   plus:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>',
   trash:'<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></svg>',
   pencil:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/></svg>',
@@ -487,7 +488,7 @@ var EXERCISES = {
 var state = { profile:null, entries:[], saveError:'', editingProfile:false, confirmReset:false, showExerciseModal:false, exerciseTab:'upper', exerciseDetail:null, showBmiModal:false, showAboutMeModal:false, canInstall:false, showIosInstallHint:false,
   foodLog:{}, showAddFoodModal:false, foodDraft:null, foodAiLoading:false, foodAiError:'', showAiSettingsModal:false, aiKeys:{gemini:'',groq:'',openrouter:''}, showFoodHistoryModal:false, selectedFoodDate:null,
   foodLookupLoading:null, foodLookupError:'', foodLookupNote:'',
-  foodInputMode:'text', foodPhoto:null, barcodePhoto:null, knownFoods:{}, showAlcoholModal:false, alcoholSearchQuery:'', alcoholAddedName:'', addFoodMealType:null, editingFoodId:null, editingFoodDay:null, calAdjustChoices:{}, dayTypes:{}, veggieLog:{}, workDayTypes:{}, fastingConfig:{enabled:false, eatStart:720, eatEnd:1200}, showFastingEdit:false, streakCelebrated:{weightStreak:0, calorieStreak:0, weightMin:null},
+  foodInputMode:'text', foodPhoto:null, barcodePhoto:null, knownFoods:{}, showAlcoholModal:false, alcoholSearchQuery:'', alcoholAddedName:'', addFoodMealType:null, editingFoodId:null, editingFoodDay:null, calAdjustChoices:{}, dayTypes:{}, veggieLog:{}, workDayTypes:{}, fastingConfig:{enabled:false, eatStart:720, eatEnd:1200}, showFastingEdit:false, streakCelebrated:{weightStreak:0, calorieStreak:0, weightMin:null}, showNotifModal:false,
   waterLog:{}, favoriteFoods:{}, mealTemplates:{}, showFavoritesModal:false,
   showRecipeModal:false, recipeDraft:null };
 
@@ -506,6 +507,8 @@ function loadState(){
   try{ var wd = JSON.parse(localStorage.getItem('vitals_work_day_types')||'{}'); state.workDayTypes = (wd && typeof wd==='object')?wd:{}; }catch(e){ state.workDayTypes={}; }
   try{ var fc = JSON.parse(localStorage.getItem('vitals_fasting_config')||'null'); state.fastingConfig = (fc && typeof fc==='object') ? {enabled:!!fc.enabled, eatStart:Number(fc.eatStart)||720, eatEnd:Number(fc.eatEnd)||1200} : {enabled:false, eatStart:720, eatEnd:1200}; }catch(e){ state.fastingConfig={enabled:false, eatStart:720, eatEnd:1200}; }
   try{ var sc = JSON.parse(localStorage.getItem('vitals_streak_celebrated')||'null'); state.streakCelebrated = (sc && typeof sc==='object') ? {weightStreak:Number(sc.weightStreak)||0, calorieStreak:Number(sc.calorieStreak)||0, weightMin:(sc.weightMin==null?null:Number(sc.weightMin))} : {weightStreak:0, calorieStreak:0, weightMin:null}; }catch(e){ state.streakCelebrated={weightStreak:0, calorieStreak:0, weightMin:null}; }
+  var defaultNotifConfig = {enabled:false, waterEnabled:true, waterIntervalHours:3, waterStart:'08:00', waterEnd:'22:00', eveningEnabled:true, eveningTime:'21:00', morningEnabled:true, morningTime:'07:00'};
+  try{ var nc = JSON.parse(localStorage.getItem('vitals_notif_config')||'null'); state.notifConfig = (nc && typeof nc==='object') ? Object.assign({}, defaultNotifConfig, nc) : Object.assign({}, defaultNotifConfig); }catch(e){ state.notifConfig = Object.assign({}, defaultNotifConfig); }
 }
 function saveWaterLog(wl){
   state.waterLog = wl;
@@ -581,6 +584,80 @@ function saveWorkDayTypes(wt){
 }
 function workModeExtra(mode){
   return mode==='active' ? {kcal:300, water:600} : {kcal:0, water:0};
+}
+function saveNotifConfig(cfg){
+  state.notifConfig = cfg;
+  try{ localStorage.setItem('vitals_notif_config', JSON.stringify(cfg)); }catch(e){}
+}
+function notifSupported(){ return typeof window!=='undefined' && 'Notification' in window; }
+function notifPermission(){ return notifSupported() ? Notification.permission : 'unsupported'; }
+function showLocalNotification(title, body, tag){
+  if(!notifSupported() || Notification.permission!=='granted') return;
+  if(navigator.serviceWorker && navigator.serviceWorker.ready){
+    navigator.serviceWorker.ready.then(function(reg){
+      reg.showNotification(title, {body:body, tag:tag, icon:'icon-192.png', badge:'icon-192.png', renotify:true});
+    }).catch(function(){
+      try{ new Notification(title, {body:body, tag:tag, icon:'icon-192.png'}); }catch(e){}
+    });
+  } else {
+    try{ new Notification(title, {body:body, tag:tag, icon:'icon-192.png'}); }catch(e){}
+  }
+}
+var notifTimers = {water:null, evening:null, morning:null};
+function clearNotifTimers(){
+  Object.keys(notifTimers).forEach(function(k){ if(notifTimers[k]){ clearTimeout(notifTimers[k]); notifTimers[k]=null; } });
+}
+function parseHM(str, fallbackH, fallbackM){
+  var m = /^(\d{1,2}):(\d{2})$/.exec(str||'');
+  if(!m) return {h:fallbackH, m:fallbackM};
+  return {h:Number(m[1]), m:Number(m[2])};
+}
+function msUntil(hour, minute){
+  var now = new Date();
+  var target = new Date(now.getFullYear(), now.getMonth(), now.getDate(), hour, minute, 0, 0);
+  if(target.getTime()<=now.getTime()) target.setDate(target.getDate()+1);
+  return target.getTime()-now.getTime();
+}
+function scheduleDaily(hour, minute, fn, timerKey){
+  if(notifTimers[timerKey]) clearTimeout(notifTimers[timerKey]);
+  notifTimers[timerKey] = setTimeout(function(){
+    fn();
+    scheduleDaily(hour, minute, fn, timerKey);
+  }, msUntil(hour, minute));
+}
+function scheduleWaterReminder(){
+  if(notifTimers.water) clearTimeout(notifTimers.water);
+  var cfg = state.notifConfig;
+  if(!cfg || !cfg.enabled || !cfg.waterEnabled) return;
+  var now = new Date();
+  var nowMin = now.getHours()*60+now.getMinutes();
+  var startM = parseHM(cfg.waterStart,8,0), endM = parseHM(cfg.waterEnd,22,0);
+  var startMin = startM.h*60+startM.m, endMin = endM.h*60+endM.m;
+  var intervalMs = Math.max(1, cfg.waterIntervalHours||3)*3600000;
+  var delayMs;
+  if(endMin>startMin && (nowMin<startMin || nowMin>=endMin)){
+    delayMs = (nowMin<startMin ? (startMin-nowMin) : (1440-nowMin+startMin))*60000;
+  } else {
+    delayMs = intervalMs;
+  }
+  notifTimers.water = setTimeout(function(){
+    showLocalNotification('💧 Pitný režim', 'Nezapomeň se napít vody.', 'water-reminder');
+    scheduleWaterReminder();
+  }, delayMs);
+}
+function scheduleAllNotifications(){
+  clearNotifTimers();
+  var cfg = state.notifConfig;
+  if(!cfg || !cfg.enabled) return;
+  if(cfg.waterEnabled) scheduleWaterReminder();
+  if(cfg.eveningEnabled){
+    var e = parseHM(cfg.eveningTime,21,0);
+    scheduleDaily(e.h, e.m, function(){ showLocalNotification('🍽️ Večerní zápis', 'Zapiš si dnešní jídelníček, než půjdeš spát.', 'evening-reminder'); }, 'evening');
+  }
+  if(cfg.morningEnabled){
+    var m = parseHM(cfg.morningTime,7,0);
+    scheduleDaily(m.h, m.m, function(){ showLocalNotification('⚖️ Ranní váha', 'Nezapomeň si dnes zapsat váhu.', 'morning-reminder'); }, 'morning');
+  }
 }
 function saveStreakCelebrated(sc){
   state.streakCelebrated = sc;
@@ -687,7 +764,7 @@ function collectAllData(){
     profile: state.profile, entries: state.entries, foodLog: state.foodLog,
     dayTypes: state.dayTypes, workDayTypes: state.workDayTypes, waterLog: state.waterLog,
     favoriteFoods: state.favoriteFoods, mealTemplates: state.mealTemplates,
-    knownFoods: state.knownFoods, calAdjustChoices: state.calAdjustChoices, veggieLog: state.veggieLog, fastingConfig: state.fastingConfig
+    knownFoods: state.knownFoods, calAdjustChoices: state.calAdjustChoices, veggieLog: state.veggieLog, fastingConfig: state.fastingConfig, notifConfig: state.notifConfig
   };
 }
 function exportAllData(){
@@ -716,6 +793,7 @@ function importAllDataFromFile(file, cb){
       if(data.calAdjustChoices && typeof data.calAdjustChoices==='object') saveCalAdjustChoices(data.calAdjustChoices);
       if(data.veggieLog && typeof data.veggieLog==='object') saveVeggieLog(data.veggieLog);
       if(data.fastingConfig && typeof data.fastingConfig==='object') saveFastingConfig({enabled:!!data.fastingConfig.enabled, eatStart:Number(data.fastingConfig.eatStart)||720, eatEnd:Number(data.fastingConfig.eatEnd)||1200});
+      if(data.notifConfig && typeof data.notifConfig==='object') saveNotifConfig(Object.assign({enabled:false, waterEnabled:true, waterIntervalHours:3, waterStart:'08:00', waterEnd:'22:00', eveningEnabled:true, eveningTime:'21:00', morningEnabled:true, morningTime:'07:00'}, data.notifConfig));
       cb(null);
     }catch(e){ cb(e); }
   };
@@ -2166,6 +2244,7 @@ function renderMain(){
   html += '<header class="dash-top-header fade-up">'+
     '<div class="dash-logo"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3V21M5 12L12 5L19 12"/></svg><span>Sinator Vitals</span></div>'+
     '<div class="dash-top-actions"><canvas id="matrix-rain" width="40" height="28" style="display:block;border-radius:6px;background:#000;flex-shrink:0"></canvas>'+
+    '<button class="btn-icon" id="open-notif-btn" aria-label="Nastavení oznámení">'+ICONS.bell+'</button>'+
     '<button class="btn-icon" id="edit-profile-btn" aria-label="Upravit profil">'+ICONS.pencil+'</button></div>'+
   '</header>';
 
@@ -2389,6 +2468,9 @@ html += '<section class="card exercise-teaser fade-up">'+
 
   if(state.editingProfile){
     html += renderEditModal(profile);
+  }
+  if(state.showNotifModal){
+    html += renderNotifModal();
   }
   if(state.showExerciseModal){
     html += renderExerciseModal();
@@ -2921,6 +3003,59 @@ function renderAboutMeModal(bmi, cat, profile, minNormal, maxNormal, plan, lates
   '</div>';
 }
 
+function renderNotifModal(){
+  var cfg = state.notifConfig;
+  var perm = notifPermission();
+  var permHtml;
+  if(!notifSupported()){
+    permHtml = '<div class="cal-warning">'+ICONS.alert+'<span>Tento prohlížeč lokální oznámení nepodporuje.</span></div>';
+  } else if(perm==='denied'){
+    permHtml = '<div class="cal-warning">'+ICONS.alert+'<span>Oznámení jsou v prohlížeči zablokovaná. Povol je v nastavení prohlížeče/appky.</span></div>';
+  } else if(perm==='granted'){
+    permHtml = '<div class="cal-note" style="margin-top:0;color:'+COLORS.normal+'">'+ICONS.check+' Oznámení jsou povolená.</div>';
+  } else {
+    permHtml = '<button type="button" class="btn-secondary" id="notif-request-perm-btn" style="width:100%">'+ICONS.bell+' Povolit oznámení v prohlížeči</button>';
+  }
+  return '<div class="modal-overlay" id="notif-overlay">'+
+    '<div class="modal" id="notif-box">'+
+      '<div class="modal-header"><div class="card-title" style="margin:0">Lokální oznámení</div><button class="btn-icon subtle" id="notif-close-btn" aria-label="Zavřít">'+ICONS.x+'</button></div>'+
+      '<form id="notif-form">'+
+        permHtml+
+        '<label class="field" style="margin-top:14px"><span>Zapnout oznámení</span><div class="seg" id="notif-master-seg">'+
+          '<button type="button" class="seg-btn'+(cfg.enabled?' active':'')+'" data-val="1">Zapnuto</button>'+
+          '<button type="button" class="seg-btn'+(!cfg.enabled?' active':'')+'" data-val="0">Vypnuto</button>'+
+        '</div><input type="hidden" id="notif-enabled" value="'+(cfg.enabled?'1':'0')+'"></label>'+
+
+        '<label class="field"><span>💧 Pitný režim</span><div class="seg" id="notif-water-seg">'+
+          '<button type="button" class="seg-btn'+(cfg.waterEnabled?' active':'')+'" data-val="1">Zapnuto</button>'+
+          '<button type="button" class="seg-btn'+(!cfg.waterEnabled?' active':'')+'" data-val="0">Vypnuto</button>'+
+        '</div><input type="hidden" id="notif-water-enabled" value="'+(cfg.waterEnabled?'1':'0')+'"></label>'+
+        '<div class="field-row">'+
+          '<label class="field"><span>Interval</span><select class="input" id="notif-water-interval">'+
+            [2,3,4].map(function(h){ return '<option value="'+h+'"'+(cfg.waterIntervalHours===h?' selected':'')+'>každé '+h+' h</option>'; }).join('')+
+          '</select></label>'+
+          '<label class="field"><span>Od</span><input class="input" id="notif-water-start" type="time" value="'+cfg.waterStart+'"></label>'+
+          '<label class="field"><span>Do</span><input class="input" id="notif-water-end" type="time" value="'+cfg.waterEnd+'"></label>'+
+        '</div>'+
+
+        '<label class="field"><span>🍽️ Večerní zápis jídelníčku</span><div class="seg" id="notif-evening-seg">'+
+          '<button type="button" class="seg-btn'+(cfg.eveningEnabled?' active':'')+'" data-val="1">Zapnuto</button>'+
+          '<button type="button" class="seg-btn'+(!cfg.eveningEnabled?' active':'')+'" data-val="0">Vypnuto</button>'+
+        '</div><input type="hidden" id="notif-evening-enabled" value="'+(cfg.eveningEnabled?'1':'0')+'"></label>'+
+        '<label class="field"><span>Čas</span><input class="input" id="notif-evening-time" type="time" value="'+cfg.eveningTime+'"></label>'+
+
+        '<label class="field"><span>⚖️ Ranní zápis váhy</span><div class="seg" id="notif-morning-seg">'+
+          '<button type="button" class="seg-btn'+(cfg.morningEnabled?' active':'')+'" data-val="1">Zapnuto</button>'+
+          '<button type="button" class="seg-btn'+(!cfg.morningEnabled?' active':'')+'" data-val="0">Vypnuto</button>'+
+        '</div><input type="hidden" id="notif-morning-enabled" value="'+(cfg.morningEnabled?'1':'0')+'"></label>'+
+        '<label class="field"><span>Čas</span><input class="input" id="notif-morning-time" type="time" value="'+cfg.morningTime+'"></label>'+
+
+        '<p class="advice-note">Oznámení fungují, dokud je appka otevřená (na pozadí karty nebo jako nainstalovaná PWA). Prohlížeč je nemůže spolehlivě doručit, když je appka úplně zavřená.</p>'+
+        '<button class="btn-primary" type="submit" style="width:100%;margin-top:8px">'+ICONS.check+' Uložit</button>'+
+      '</form>'+
+    '</div>'+
+  '</div>';
+}
 function renderEditModal(profile){
   var confirmBlock = state.confirmReset ?
     '<div class="confirm-row"><span>Opravdu smazat profil i historii vah?</span><div class="row-btns"><button class="btn-ghost-danger" id="reset-confirm-btn">Ano, smazat</button><button class="btn-ghost" id="reset-cancel-btn">Zrušit</button></div></div>' :
@@ -2969,6 +3104,63 @@ function renderEditModal(profile){
 function attachMainEvents(){
   var editBtn = document.getElementById('edit-profile-btn');
   if(editBtn) editBtn.addEventListener('click', function(){ state.editingProfile=true; state.confirmReset=false; render(); });
+
+  var openNotifBtn = document.getElementById('open-notif-btn');
+  if(openNotifBtn) openNotifBtn.addEventListener('click', function(){ state.showNotifModal=true; render(); });
+
+  var notifOverlay = document.getElementById('notif-overlay');
+  if(notifOverlay){
+    notifOverlay.addEventListener('click', function(e){ if(e.target===notifOverlay){ state.showNotifModal=false; render(); } });
+    var notifCloseBtn = document.getElementById('notif-close-btn');
+    if(notifCloseBtn) notifCloseBtn.addEventListener('click', function(){ state.showNotifModal=false; render(); });
+
+    var notifPermBtn = document.getElementById('notif-request-perm-btn');
+    if(notifPermBtn) notifPermBtn.addEventListener('click', function(){
+      if(!notifSupported()) return;
+      Notification.requestPermission().then(function(){ render(); });
+    });
+
+    function wireNotifSeg(segId, hiddenId){
+      var seg = document.getElementById(segId);
+      if(!seg) return;
+      seg.querySelectorAll('.seg-btn').forEach(function(btn){
+        btn.addEventListener('click', function(){
+          seg.querySelectorAll('.seg-btn').forEach(function(b){ b.classList.remove('active'); });
+          btn.classList.add('active');
+          document.getElementById(hiddenId).value = btn.getAttribute('data-val');
+        });
+      });
+    }
+    wireNotifSeg('notif-master-seg', 'notif-enabled');
+    wireNotifSeg('notif-water-seg', 'notif-water-enabled');
+    wireNotifSeg('notif-evening-seg', 'notif-evening-enabled');
+    wireNotifSeg('notif-morning-seg', 'notif-morning-enabled');
+
+    var notifForm = document.getElementById('notif-form');
+    if(notifForm) notifForm.addEventListener('submit', function(e){
+      e.preventDefault();
+      var enabled = document.getElementById('notif-enabled').value==='1';
+      var cfg = {
+        enabled: enabled,
+        waterEnabled: document.getElementById('notif-water-enabled').value==='1',
+        waterIntervalHours: Number(document.getElementById('notif-water-interval').value)||3,
+        waterStart: document.getElementById('notif-water-start').value || '08:00',
+        waterEnd: document.getElementById('notif-water-end').value || '22:00',
+        eveningEnabled: document.getElementById('notif-evening-enabled').value==='1',
+        eveningTime: document.getElementById('notif-evening-time').value || '21:00',
+        morningEnabled: document.getElementById('notif-morning-enabled').value==='1',
+        morningTime: document.getElementById('notif-morning-time').value || '07:00'
+      };
+      saveNotifConfig(cfg);
+      if(enabled && notifSupported() && Notification.permission==='default'){
+        Notification.requestPermission().then(function(){ scheduleAllNotifications(); });
+      } else {
+        scheduleAllNotifications();
+      }
+      state.showNotifModal=false;
+      render();
+    });
+  }
 
   var installBtn = document.getElementById('install-app-btn');
   if(installBtn) installBtn.addEventListener('click', function(){
@@ -4234,6 +4426,7 @@ function attachMainEvents(){
           loadState();
           state.editingProfile=false;
           render();
+          scheduleAllNotifications();
         });
       });
     }
@@ -4372,6 +4565,7 @@ if('serviceWorker' in navigator){
 
 loadState();
 render();
+scheduleAllNotifications();
 </script>
 </body>
 </html>
