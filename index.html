@@ -14,6 +14,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/@zxing/library@0.20.0/umd/index.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.3/dist/confetti.browser.min.js"></script>
 <style>
   :root{
     --bg:#0A0F0D; --bg-2:#0E1512; --surface:#131B18; --surface-2:#1B2521; --ink:#EDF5F1; --ink-muted:#8CA69C; --line:#243029;
@@ -40,7 +41,7 @@
   .eyebrow{font-family:'JetBrains Mono',monospace;text-transform:uppercase;letter-spacing:.12em;font-size:11px;color:var(--accent);font-weight:500;}
   .header{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:18px;}
   .hello{font-family:'Space Grotesk',sans-serif;font-size:26px;font-weight:700;margin:2px 0 0;}
-  .card{background:linear-gradient(180deg,var(--surface),var(--bg-2));border:1px solid var(--line);border-radius:22px;padding:22px;margin-bottom:16px;box-shadow:var(--shadow);}
+  .card{background:linear-gradient(180deg,var(--surface),var(--bg-2));border:1px solid var(--line);border-radius:22px;padding:22px;margin-bottom:16px;box-shadow:var(--shadow);backdrop-filter:blur(14px) saturate(140%);-webkit-backdrop-filter:blur(14px) saturate(140%);}
   .card-title{font-family:'Space Grotesk',sans-serif;font-weight:600;font-size:15px;margin-bottom:14px;}
   .gauge-card{text-align:center;}
   .gauge-wrap{position:relative;max-width:300px;margin:0 auto;}
@@ -72,6 +73,18 @@
   .dash-weight-trend{font-size:11px;margin-top:8px;font-weight:600;}
   .dash-actions{display:flex;gap:10px;margin-bottom:18px;}
   .dash-actions .btn-primary,.dash-actions .btn-secondary{flex:1;}
+  .quick-add-hint{display:flex;align-items:flex-start;gap:8px;background:var(--accent-soft);border:1px solid rgba(62,226,154,0.25);border-radius:12px;padding:10px 12px;font-size:12px;line-height:1.4;color:var(--ink);margin-bottom:12px;}
+  .quick-add-hint svg{flex-shrink:0;color:var(--accent);margin-top:1px;}
+  .water-track{width:100%;height:10px;border-radius:6px;background:var(--surface-2);overflow:hidden;margin-bottom:12px;}
+  .water-track-fill{height:100%;border-radius:6px;background:linear-gradient(90deg,#3B82F6,#5AA6E8);transition:width .3s;}
+  .water-actions{display:flex;gap:10px;align-items:center;}
+  .water-actions .btn-secondary{color:#3B82F6;border-color:rgba(59,130,246,0.3);background:rgba(59,130,246,0.1);}
+  .fav-star-btn{background:transparent;border:none;padding:2px;cursor:pointer;color:var(--ink-muted);display:inline-flex;align-items:center;flex-shrink:0;}
+  .fav-star-btn.active{color:#F0B84A;}
+  .tpl-card{background:var(--surface-2);border:1px solid var(--line);border-radius:14px;padding:12px 14px;margin-bottom:8px;display:flex;align-items:center;gap:10px;}
+  .tpl-card-info{flex:1;min-width:0;}
+  .tpl-card-name{font-weight:600;font-size:13.5px;}
+  .tpl-card-meta{font-size:11px;color:var(--ink-muted);margin-top:2px;}
   @media (max-width:360px){
     .dash-stats-grid{grid-template-columns:1fr;}
   }
@@ -245,6 +258,10 @@
   .cal-sub-label{font-family:'JetBrains Mono',monospace;font-size:9.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-muted);margin-bottom:4px;}
   .cal-sub-value{font-family:'Space Grotesk',sans-serif;font-size:16px;font-weight:700;}
   .macro-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:16px;}
+  .fasting-ring{width:120px;height:120px;border-radius:50%;margin:0 auto;position:relative;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+  .fasting-ring-inner{position:absolute;inset:9px;background:var(--surface-2);border-radius:50%;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;}
+  .fasting-remaining{font-family:'Space Grotesk',sans-serif;font-size:17px;font-weight:700;}
+  .fasting-phase-label{font-size:10.5px;color:var(--ink-muted);margin-top:2px;text-transform:uppercase;letter-spacing:.03em;}
   .macro-card{background:var(--surface-2);border:1px solid var(--line);border-radius:16px;padding:14px 8px;text-align:center;}
   .macro-name{font-size:12px;font-weight:600;color:var(--ink-muted);margin-bottom:10px;}
   .macro-ring{width:68px;height:68px;border-radius:50%;margin:0 auto 8px;position:relative;display:flex;align-items:center;justify-content:center;}
@@ -404,7 +421,10 @@ var ICONS = {
   scale:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="4" r="2"/><circle cx="12" cy="20" r="2"/><path d="M2 12h20"/><circle cx="8" cy="12" r="2"/><circle cx="16" cy="12" r="2"/></svg>',
   food:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="8" width="16" height="12" rx="2"/><path d="M18 4c1.1 0 2 .9 2 2v2M6 4c-1.1 0-2 .9-2 2v2"/><circle cx="12" cy="14" r="2"/></svg>',
   wine:'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 10 6h4l-2-4Z"/><path d="M10 6 8 10h8l-2-4"/><path d="M8 10v8c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2v-8"/><path d="M10 18h4M12 22v-4"/></svg>',
-  flame:'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2s-4 4-4 10a4 4 0 0 0 8 0c0-6-4-10-4-10Z"/></svg>'
+  flame:'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2s-4 4-4 10a4 4 0 0 0 8 0c0-6-4-10-4-10Z"/></svg>',
+  drop:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2s7 8 7 13a7 7 0 0 1-14 0c0-5 7-13 7-13Z"/></svg>',
+  star:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 15 9l7.5 1-5.5 5 1.5 7.5L12 18.5 5.5 22.5 7 15l-5.5-5L9 9z"/></svg>',
+  starFilled:'<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="1"><path d="M12 2 15 9l7.5 1-5.5 5 1.5 7.5L12 18.5 5.5 22.5 7 15l-5.5-5L9 9z"/></svg>'
 };
 
 // ---------- exercise tips data ----------
@@ -467,7 +487,8 @@ var EXERCISES = {
 var state = { profile:null, entries:[], saveError:'', editingProfile:false, confirmReset:false, showExerciseModal:false, exerciseTab:'upper', exerciseDetail:null, showBmiModal:false, showAboutMeModal:false, canInstall:false, showIosInstallHint:false,
   foodLog:{}, showAddFoodModal:false, foodDraft:null, foodAiLoading:false, foodAiError:'', showAiSettingsModal:false, aiKeys:{gemini:'',groq:'',openrouter:''}, showFoodHistoryModal:false, selectedFoodDate:null,
   foodLookupLoading:null, foodLookupError:'', foodLookupNote:'',
-  foodInputMode:'text', foodPhoto:null, barcodePhoto:null, knownFoods:{}, showAlcoholModal:false, alcoholSearchQuery:'', alcoholAddedName:'', addFoodMealType:null, editingFoodId:null, editingFoodDay:null, calAdjustChoices:{}, dayTypes:{},
+  foodInputMode:'text', foodPhoto:null, barcodePhoto:null, knownFoods:{}, showAlcoholModal:false, alcoholSearchQuery:'', alcoholAddedName:'', addFoodMealType:null, editingFoodId:null, editingFoodDay:null, calAdjustChoices:{}, dayTypes:{}, veggieLog:{}, workDayTypes:{}, fastingConfig:{enabled:false, eatStart:720, eatEnd:1200}, showFastingEdit:false, streakCelebrated:{weightStreak:0, calorieStreak:0, weightMin:null},
+  waterLog:{}, favoriteFoods:{}, mealTemplates:{}, showFavoritesModal:false,
   showRecipeModal:false, recipeDraft:null };
 
 function loadState(){
@@ -478,6 +499,228 @@ function loadState(){
   try{ var kf = JSON.parse(localStorage.getItem('vitals_known_foods')||'{}'); state.knownFoods = (kf && typeof kf==='object')?kf:{}; }catch(e){ state.knownFoods={}; }
   try{ var ca = JSON.parse(localStorage.getItem('vitals_cal_adjust_choices')||'{}'); state.calAdjustChoices = (ca && typeof ca==='object')?ca:{}; }catch(e){ state.calAdjustChoices={}; }
   try{ var dt = JSON.parse(localStorage.getItem('vitals_day_types')||'{}'); state.dayTypes = (dt && typeof dt==='object')?dt:{}; }catch(e){ state.dayTypes={}; }
+  try{ var wl = JSON.parse(localStorage.getItem('vitals_water_log')||'{}'); state.waterLog = (wl && typeof wl==='object')?wl:{}; }catch(e){ state.waterLog={}; }
+  try{ var ff = JSON.parse(localStorage.getItem('vitals_favorite_foods')||'{}'); state.favoriteFoods = (ff && typeof ff==='object')?ff:{}; }catch(e){ state.favoriteFoods={}; }
+  try{ var mt = JSON.parse(localStorage.getItem('vitals_meal_templates')||'{}'); state.mealTemplates = (mt && typeof mt==='object')?mt:{}; }catch(e){ state.mealTemplates={}; }
+  try{ var vg = JSON.parse(localStorage.getItem('vitals_veggie_log')||'{}'); state.veggieLog = (vg && typeof vg==='object')?vg:{}; }catch(e){ state.veggieLog={}; }
+  try{ var wd = JSON.parse(localStorage.getItem('vitals_work_day_types')||'{}'); state.workDayTypes = (wd && typeof wd==='object')?wd:{}; }catch(e){ state.workDayTypes={}; }
+  try{ var fc = JSON.parse(localStorage.getItem('vitals_fasting_config')||'null'); state.fastingConfig = (fc && typeof fc==='object') ? {enabled:!!fc.enabled, eatStart:Number(fc.eatStart)||720, eatEnd:Number(fc.eatEnd)||1200} : {enabled:false, eatStart:720, eatEnd:1200}; }catch(e){ state.fastingConfig={enabled:false, eatStart:720, eatEnd:1200}; }
+  try{ var sc = JSON.parse(localStorage.getItem('vitals_streak_celebrated')||'null'); state.streakCelebrated = (sc && typeof sc==='object') ? {weightStreak:Number(sc.weightStreak)||0, calorieStreak:Number(sc.calorieStreak)||0, weightMin:(sc.weightMin==null?null:Number(sc.weightMin))} : {weightStreak:0, calorieStreak:0, weightMin:null}; }catch(e){ state.streakCelebrated={weightStreak:0, calorieStreak:0, weightMin:null}; }
+}
+function saveWaterLog(wl){
+  state.waterLog = wl;
+  try{ localStorage.setItem('vitals_water_log', JSON.stringify(wl)); }catch(e){}
+}
+function addWater(ml, day){
+  day = day || todayLocalISO();
+  var cur = Math.max(0, Number(state.waterLog[day])||0);
+  var wl = Object.assign({}, state.waterLog);
+  wl[day] = Math.max(0, cur+ml);
+  saveWaterLog(wl);
+}
+function saveFavoriteFoods(ff){
+  state.favoriteFoods = ff;
+  try{ localStorage.setItem('vitals_favorite_foods', JSON.stringify(ff)); }catch(e){}
+}
+function toggleFavoriteFood(entry){
+  var key = normalizeSearchText(entry.name);
+  if(!key) return;
+  var ff = Object.assign({}, state.favoriteFoods);
+  if(ff[key]){ delete ff[key]; }
+  else {
+    ff[key] = {name:entry.name, kcal:entry.kcal||0, protein:entry.protein||0, carbs:entry.carbs||0, fat:entry.fat||0,
+      alcohol:entry.alcohol||0, volumeMl:entry.volumeMl!=null?entry.volumeMl:null, abv:entry.abv||0,
+      quantity:entry.quantity||1, unit:entry.unit||'porce'};
+  }
+  saveFavoriteFoods(ff);
+}
+function isFavoriteFood(name){
+  var key = normalizeSearchText(name);
+  return !!(key && state.favoriteFoods[key]);
+}
+function saveMealTemplates(mt){
+  state.mealTemplates = mt;
+  try{ localStorage.setItem('vitals_meal_templates', JSON.stringify(mt)); }catch(e){}
+}
+function saveMealAsTemplate(name, items, mealType){
+  if(!name || !items || !items.length) return;
+  var mt = Object.assign({}, state.mealTemplates);
+  mt[uid()] = {name:name, mealType:mealType||'snidane', items:items.map(function(f){
+    return {name:f.name, kcal:f.kcal||0, protein:f.protein||0, carbs:f.carbs||0, fat:f.fat||0,
+      alcohol:f.alcohol||0, volumeMl:f.volumeMl!=null?f.volumeMl:null, abv:f.abv||0, quantity:f.quantity||1, unit:f.unit||'porce'};
+  })};
+  saveMealTemplates(mt);
+}
+function deleteMealTemplate(id){
+  var mt = Object.assign({}, state.mealTemplates);
+  delete mt[id];
+  saveMealTemplates(mt);
+}
+function applyMealTemplate(id, day){
+  var tpl = state.mealTemplates[id];
+  if(!tpl) return;
+  day = day || todayLocalISO();
+  tpl.items.forEach(function(it){
+    persistFoodEntry(Object.assign({}, it, {mealType:tpl.mealType}), day);
+  });
+}
+function saveVeggieLog(vl){
+  state.veggieLog = vl;
+  try{ localStorage.setItem('vitals_veggie_log', JSON.stringify(vl)); }catch(e){}
+}
+function addVeggie(day, delta){
+  var vl = Object.assign({}, state.veggieLog);
+  var cur = Math.max(0, Number(vl[day])||0);
+  var next = Math.max(0, cur+delta);
+  if(next<=0) delete vl[day]; else vl[day] = next;
+  saveVeggieLog(vl);
+}
+function saveWorkDayTypes(wt){
+  state.workDayTypes = wt;
+  try{ localStorage.setItem('vitals_work_day_types', JSON.stringify(wt)); }catch(e){}
+}
+function workModeExtra(mode){
+  return mode==='active' ? {kcal:300, water:600} : {kcal:0, water:0};
+}
+function saveStreakCelebrated(sc){
+  state.streakCelebrated = sc;
+  try{ localStorage.setItem('vitals_streak_celebrated', JSON.stringify(sc)); }catch(e){}
+}
+function fireConfetti(){
+  if(typeof confetti !== 'function') return;
+  confetti({particleCount:90, spread:75, origin:{y:0.3}, colors:['#3EE29A','#5AA6E8','#F0B84A','#F0725E']});
+  setTimeout(function(){ confetti({particleCount:50, spread:100, origin:{y:0.5}, colors:['#3EE29A','#5AA6E8','#F0B84A']}); }, 200);
+}
+function computeConsecutiveDays(hasFn){
+  var count = 0;
+  var d = todayLocalISO();
+  if(hasFn(d)){ count = 1; d = addDaysISO(d, -1); }
+  else { d = addDaysISO(d, -1); }
+  while(hasFn(d)){ count++; d = addDaysISO(d, -1); }
+  return count;
+}
+function computeStreaks(plan){
+  var weightDates = {};
+  (state.entries||[]).forEach(function(e){ weightDates[e.date] = true; });
+  var weightStreak = computeConsecutiveDays(function(day){ return !!weightDates[day]; });
+  var calorieStreak = computeConsecutiveDays(function(day){
+    var dayFood = state.foodLog[day];
+    if(!dayFood || !dayFood.length) return false;
+    var t = foodTotals(dayFood);
+    return t.kcal>0 && t.kcal <= plan.target*1.05;
+  });
+  var asc = sortedAsc(state.entries||[]);
+  var minWeight = asc.length ? Math.min.apply(null, asc.map(function(e){ return e.weight; })) : null;
+  return {weightStreak:weightStreak, calorieStreak:calorieStreak, minWeight:minWeight};
+}
+function checkStreakCelebrations(streaks){
+  var sc = state.streakCelebrated || {weightStreak:0, calorieStreak:0, weightMin:null};
+  var changed = false;
+  var celebrated = false;
+  var next = Object.assign({}, sc);
+  if(streaks.weightStreak>0 && streaks.weightStreak%7===0 && streaks.weightStreak>sc.weightStreak){
+    next.weightStreak = streaks.weightStreak; changed = true; celebrated = true;
+  }
+  if(streaks.calorieStreak>0 && streaks.calorieStreak%7===0 && streaks.calorieStreak>sc.calorieStreak){
+    next.calorieStreak = streaks.calorieStreak; changed = true; celebrated = true;
+  }
+  if(streaks.minWeight!=null && (sc.weightMin==null || streaks.minWeight<sc.weightMin)){
+    next.weightMin = streaks.minWeight; changed = true; celebrated = true;
+  }
+  if(changed) saveStreakCelebrated(next);
+  if(celebrated) fireConfetti();
+}
+function renderStreakCard(streaks){
+  var wColor = streaks.weightStreak>0 ? COLORS.accent : 'var(--ink-muted)';
+  var cColor = streaks.calorieStreak>0 ? COLORS.normal : 'var(--ink-muted)';
+  return '<section class="card fade-up" id="streak-card">'+
+    '<div class="card-title" style="margin-bottom:12px">🔥 Série aktivních dní</div>'+
+    '<div class="dash-stats-grid" style="margin-bottom:0">'+
+      '<div class="dash-stat-card" style="cursor:default">'+
+        '<div class="card-header"><span class="card-icon" style="color:'+wColor+'">⚖️</span><h2 class="card-title" style="margin:0;font-size:12.5px">Zápis váhy</h2></div>'+
+        '<div class="dash-bmi-value" style="color:'+wColor+'">'+streaks.weightStreak+'</div>'+
+        '<div class="dash-bmi-sub">'+(streaks.weightStreak===1?'den v řadě':'dní v řadě')+'</div>'+
+      '</div>'+
+      '<div class="dash-stat-card" style="cursor:default">'+
+        '<div class="card-header"><span class="card-icon" style="color:'+cColor+'">🎯</span><h2 class="card-title" style="margin:0;font-size:12.5px">Kalorický cíl</h2></div>'+
+        '<div class="dash-bmi-value" style="color:'+cColor+'">'+streaks.calorieStreak+'</div>'+
+        '<div class="dash-bmi-sub">'+(streaks.calorieStreak===1?'den v řadě':'dní v řadě')+'</div>'+
+      '</div>'+
+    '</div>'+
+  '</section>';
+}
+function saveFastingConfig(cfg){
+  try{ localStorage.setItem('vitals_fasting_config', JSON.stringify(cfg)); }catch(e){}
+}
+function minutesToHM(m){
+  m = ((m%1440)+1440)%1440;
+  return String(Math.floor(m/60)).padStart(2,'0')+':'+String(m%60).padStart(2,'0');
+}
+function durationToHM(m){
+  m = Math.max(0, Math.round(m));
+  var h = Math.floor(m/60), mm = m%60;
+  return h+' h '+String(mm).padStart(2,'0')+' min';
+}
+function fastingStatus(cfg){
+  var totalEat = cfg.eatEnd - cfg.eatStart;
+  if(totalEat<=0 || totalEat>=1440) return null;
+  var totalFast = 1440 - totalEat;
+  var now = new Date();
+  var nowMin = now.getHours()*60 + now.getMinutes();
+  var phase, elapsed, total;
+  if(nowMin>=cfg.eatStart && nowMin<cfg.eatEnd){
+    phase = 'eating';
+    elapsed = nowMin - cfg.eatStart;
+    total = totalEat;
+  } else {
+    phase = 'fasting';
+    elapsed = nowMin<cfg.eatStart ? (1440-cfg.eatEnd)+nowMin : nowMin-cfg.eatEnd;
+    total = totalFast;
+  }
+  var remaining = total - elapsed;
+  var pct = total>0 ? Math.max(0, Math.min(100, elapsed/total*100)) : 0;
+  return {phase:phase, elapsed:elapsed, total:total, remaining:remaining, pct:pct};
+}
+function collectAllData(){
+  return {
+    version:1, exportedAt:new Date().toISOString(), app:'sinator-vitals',
+    profile: state.profile, entries: state.entries, foodLog: state.foodLog,
+    dayTypes: state.dayTypes, workDayTypes: state.workDayTypes, waterLog: state.waterLog,
+    favoriteFoods: state.favoriteFoods, mealTemplates: state.mealTemplates,
+    knownFoods: state.knownFoods, calAdjustChoices: state.calAdjustChoices, veggieLog: state.veggieLog, fastingConfig: state.fastingConfig
+  };
+}
+function exportAllData(){
+  var data = collectAllData();
+  var blob = new Blob([JSON.stringify(data, null, 2)], {type:'application/json'});
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement('a');
+  a.href = url; a.download = 'sinator-vitals-zaloha-'+todayLocalISO()+'.json';
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  setTimeout(function(){ URL.revokeObjectURL(url); }, 1000);
+}
+function importAllDataFromFile(file, cb){
+  var reader = new FileReader();
+  reader.onload = function(){
+    try{
+      var data = JSON.parse(reader.result);
+      if(data.profile) saveProfile(data.profile);
+      if(Array.isArray(data.entries)) saveEntries(data.entries);
+      if(data.foodLog && typeof data.foodLog==='object') saveFoodLog(data.foodLog);
+      if(data.dayTypes && typeof data.dayTypes==='object') saveDayTypes(data.dayTypes);
+      if(data.workDayTypes && typeof data.workDayTypes==='object') saveWorkDayTypes(data.workDayTypes);
+      if(data.waterLog && typeof data.waterLog==='object') saveWaterLog(data.waterLog);
+      if(data.favoriteFoods && typeof data.favoriteFoods==='object') saveFavoriteFoods(data.favoriteFoods);
+      if(data.mealTemplates && typeof data.mealTemplates==='object') saveMealTemplates(data.mealTemplates);
+      if(data.knownFoods && typeof data.knownFoods==='object') saveKnownFoods(data.knownFoods);
+      if(data.calAdjustChoices && typeof data.calAdjustChoices==='object') saveCalAdjustChoices(data.calAdjustChoices);
+      if(data.veggieLog && typeof data.veggieLog==='object') saveVeggieLog(data.veggieLog);
+      if(data.fastingConfig && typeof data.fastingConfig==='object') saveFastingConfig({enabled:!!data.fastingConfig.enabled, eatStart:Number(data.fastingConfig.eatStart)||720, eatEnd:Number(data.fastingConfig.eatEnd)||1200});
+      cb(null);
+    }catch(e){ cb(e); }
+  };
+  reader.onerror = function(){ cb(new Error('Čtení souboru selhalo.')); };
+  reader.readAsText(file);
 }
 function saveDayTypes(dt){
   state.dayTypes = dt;
@@ -599,6 +842,10 @@ var DAY_TYPES = [
   {key:'refeed', label:'Refeed day', icon:'🍚', desc:'Den s vyšším příjemem, přibližně na úrovni udržovacích kalorií (TDEE) — navíc hlavně formou sacharidů. Používá se občas při dlouhodobém hubnutí, aby si tělo „odpočinulo" od deficitu a doplnily se zásoby glykogenu.'},
   {key:'cheat', label:'Cheat day', icon:'🍕', desc:'Volný den s výrazně vyšším příjemem (cca +30 % nad udržovací kalorie) bez tlaku na přesné sledování. Nepočítá se u něj snížení cíle kvůli včerejšímu překročení.'}
 ];
+var WORK_DAY_TYPES = [
+  {key:'standard', label:'Standardní den', icon:'📅', desc:'Běžný pracovní/klidový den — kalorický cíl i pitný režim beze změny.'},
+  {key:'active', label:'Aktivní / Dlouhý den', icon:'⚡', desc:'Náročná směna nebo fyzicky nabitý den — cíl se navýší o cca 300 kcal a pitný režim o 600 ml navíc.'}
+];
 function calcDayTypePlan(plan, dayType){
   if(dayType==='refeed'){
     var t = Math.max(plan.target, Math.round(plan.tdee));
@@ -646,11 +893,13 @@ function mealTypeInfo(key){
 }
 function renderFoodItemHtml(f, day){
   var timeLabel = f.time ? isoTimeHM(f.time) : '';
+  var fav = isFavoriteFood(f.name);
   return '<div class="food-item"><div><div class="food-item-name">'+esc(f.name||'Jídlo')+'</div>'+
     '<div class="food-item-macro">'+(timeLabel?timeLabel+' · ':'')+foodQtyLabel(f)+'B '+Math.round(f.protein||0)+' g · S '+Math.round(f.carbs||0)+' g · T '+Math.round(f.fat||0)+' g'+(f.alcohol ? ' · '+Math.round(f.alcohol)+' g alk.'+((f.volumeMl||f.abv) ? ' ('+(f.volumeMl?f.volumeMl+' ml':'')+(f.volumeMl&&f.abv?', ':'')+(f.abv?f.abv+' %':'')+')' : '') : '')+'</div>'+
     (f.ingredients ? '<div class="food-item-macro" style="margin-top:2px">'+esc(f.ingredients)+'</div>' : '')+
     '</div>'+
     '<div style="display:flex;align-items:center;gap:6px"><div style="text-align:right"><div class="food-item-kcal">'+Math.round(f.kcal)+' kcal</div><div class="food-item-kj">'+kcalToKj(f.kcal)+' kJ</div></div>'+
+    '<button class="fav-star-btn'+(fav?' active':'')+'" data-fav-food-id="'+f.id+'" data-fav-food-day="'+day+'" aria-label="'+(fav?'Odebrat z oblíbených':'Přidat do oblíbených')+'">'+(fav?ICONS.starFilled:ICONS.star)+'</button>'+
     '<button class="btn-icon subtle" data-edit-food-id="'+f.id+'" data-edit-food-day="'+day+'" aria-label="Upravit jídlo">'+ICONS.pencil+'</button>'+
     '<button class="btn-icon subtle" data-delete-food-id="'+f.id+'" data-delete-food-day="'+day+'" aria-label="Smazat jídlo">'+ICONS.trash+'</button></div></div>';
 }
@@ -946,6 +1195,62 @@ function macroRing(pct, grams, unit, color){
   return '<div class="macro-ring" style="background:conic-gradient('+color+' '+deg+'deg, var(--line) 0)">'+
     '<div class="macro-ring-inner"><div class="macro-pct" style="color:'+color+'">'+pct+'%</div></div></div>'+
     '<div class="macro-grams">'+grams+' <span class="macro-unit">'+unit+'</span></div>';
+}
+function renderFastingCard(){
+  var cfg = state.fastingConfig || {enabled:false, eatStart:720, eatEnd:1200};
+  if(state.showFastingEdit){
+    return '<section class="card fade-up" id="fasting-card">'+
+      '<div class="card-title" style="margin-bottom:12px">'+ICONS.settings+' Nastavení půstu (16:8 a podobně)</div>'+
+      '<form id="fasting-form">'+
+        '<div class="field-row">'+
+          '<label class="field"><span>Jídelní okno od</span><input class="input" id="fasting-eat-start" type="time" value="'+minutesToHM(cfg.eatStart)+'"></label>'+
+          '<label class="field"><span>Jídelní okno do</span><input class="input" id="fasting-eat-end" type="time" value="'+minutesToHM(cfg.eatEnd)+'"></label>'+
+        '</div>'+
+        '<div id="fasting-error"></div>'+
+        '<div style="display:flex;gap:8px;margin-top:8px">'+
+          '<button class="btn-primary" type="submit" style="flex:1">'+ICONS.check+' Uložit</button>'+
+          (cfg.enabled ? '<button type="button" class="btn-ghost-danger" id="fasting-disable-btn">Vypnout</button>' : '')+
+          '<button type="button" class="btn-ghost" id="fasting-cancel-btn">Zrušit</button>'+
+        '</div>'+
+      '</form>'+
+    '</section>';
+  }
+  if(!cfg.enabled){
+    return '<section class="card exercise-teaser fade-up" id="fasting-card">'+
+      '<div class="exercise-teaser-icon">⏱️</div>'+
+      '<div class="exercise-teaser-text"><div class="card-title">Přerušovaný půst</div><p>Nastav si jídelní okno (např. 16:8) a sleduj odpočet na dashboardu.</p></div>'+
+      '<button class="btn-secondary" id="fasting-setup-btn">Nastavit</button>'+
+    '</section>';
+  }
+  var fs = fastingStatus(cfg);
+  if(!fs){
+    return '<section class="card exercise-teaser fade-up" id="fasting-card">'+
+      '<div class="exercise-teaser-icon">⏱️</div>'+
+      '<div class="exercise-teaser-text"><div class="card-title">Přerušovaný půst</div><p>Neplatné nastavení okna, uprav ho prosím.</p></div>'+
+      '<button class="btn-secondary" id="fasting-setup-btn">Upravit</button>'+
+    '</section>';
+  }
+  var color = fs.phase==='eating' ? COLORS.accent : COLORS.under;
+  var deg = Math.max(0, Math.min(360, fs.pct*3.6));
+  var phaseLabel = fs.phase==='eating' ? 'Jídelní okno' : 'Půst';
+  var nextLabel = fs.phase==='eating' ? 'do konce okna' : 'do prvního jídla';
+  return '<section class="card fade-up" id="fasting-card">'+
+    '<div class="food-header-row" style="align-items:center;margin-bottom:12px"><div class="card-title" style="margin:0">⏱️ Přerušovaný půst</div>'+
+      '<button class="btn-icon subtle" id="fasting-setup-btn" aria-label="Upravit nastavení">'+ICONS.pencil+'</button>'+
+    '</div>'+
+    '<div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap">'+
+      '<div class="fasting-ring" id="fasting-ring" style="background:conic-gradient('+color+' '+deg+'deg, var(--line) 0)">'+
+        '<div class="fasting-ring-inner">'+
+          '<div class="fasting-remaining" id="fasting-remaining" style="color:'+color+'">'+durationToHM(fs.remaining)+'</div>'+
+          '<div class="fasting-phase-label" id="fasting-phase-label">'+nextLabel+'</div>'+
+        '</div>'+
+      '</div>'+
+      '<div style="flex:1;min-width:140px">'+
+        '<div class="pill" style="background:'+(fs.phase==='eating'?'var(--normal-soft)':'var(--under-soft)')+';color:'+color+'"><span class="pill-dot" style="background:'+color+'"></span>'+phaseLabel+'</div>'+
+        '<p class="advice-note" style="margin-top:8px">Jídelní okno: '+minutesToHM(cfg.eatStart)+' – '+minutesToHM(cfg.eatEnd)+'</p>'+
+      '</div>'+
+    '</div>'+
+  '</section>';
 }
 function paceOptionsHtml(goalKey, selectedKey, idPrefix){
   var list = paceListFor(goalKey);
@@ -1854,6 +2159,8 @@ function renderMain(){
   var chartLabelMode = weightChartRange==='months' ? 'month' : (weightChartRange==='years' ? 'year' : 'day');
   var chartSvg = renderChart(chartEntries, minNormal, maxNormal, chartLabelMode);
   var plan = calcCaloriePlan(profile, latest.weight);
+  var streaks = computeStreaks(plan);
+  checkStreakCelebrations(streaks);
 
   var html = '<div class="page">';
   html += '<header class="dash-top-header fade-up">'+
@@ -1862,8 +2169,10 @@ function renderMain(){
     '<button class="btn-icon" id="edit-profile-btn" aria-label="Upravit profil">'+ICONS.pencil+'</button></div>'+
   '</header>';
 
+  var greetHour = new Date().getHours();
+  var greetWord = greetHour<5 ? 'Dobrou noc' : greetHour<10 ? 'Dobré ráno' : greetHour<18 ? 'Dobrý den' : 'Dobrý večer';
   html += '<section class="dash-welcome fade-up">'+
-    '<h1 class="dash-welcome-title">Vítej zpět, <span class="dash-highlight">'+esc(profile.name)+'</span>!</h1>'+
+    '<h1 class="dash-welcome-title">'+greetWord+', <span class="dash-highlight">'+esc(profile.name)+'</span>!</h1>'+
     '<p class="dash-welcome-subtitle">Sleduj svou váhu, BMI a kalorie na jednom místě · <span id="live-clock">'+formatTimeHMS(new Date())+'</span></p>'+
   '</section>';
 
@@ -1885,6 +2194,20 @@ function renderMain(){
     '<button class="btn-secondary" id="dash-add-food-btn">'+ICONS.food+' Přidat jídlo</button>'+
   '</section>';
 
+  html += '<section class="card fade-up" style="padding:14px 16px">'+
+    '<form id="quick-weight-form" style="display:flex;gap:8px;align-items:center">'+
+      '<input class="input" id="quick-weight-input" type="number" inputmode="decimal" step="0.1" placeholder="Rychlý zápis váhy (kg)" style="flex:1">'+
+      '<button class="btn-primary" type="submit" style="flex-shrink:0">'+ICONS.check+' Uložit</button>'+
+    '</form><div id="quick-weight-error"></div>'+
+  '</section>';
+
+  html += '<section class="card fade-up" style="padding:14px 16px">'+
+    '<div class="food-header-row" style="align-items:center;margin-bottom:8px"><div class="card-title" style="margin:0">Graf váhy</div>'+
+      '<button class="btn-icon subtle" id="dash-chart-expand-btn" aria-label="Zobrazit detail grafu">'+ICONS.chevronRight+'</button></div>'+
+    (chartSvg ? '<div class="chart-wrap">'+chartSvg+'<div class="chart-legend"><span class="legend-swatch"></span> doporučené pásmo hmotnosti</div></div>' :
+      '<div class="empty-state">Přidej ještě aspoň jeden záznam a uvidíš graf progresu.</div>')+
+  '</section>';
+
   if(state.saveError){
     html += '<div class="error-banner fade-up">'+ICONS.alert+'<span>'+esc(state.saveError)+'</span></div>';
   }
@@ -1900,6 +2223,27 @@ function renderMain(){
   }
 
   var todayIso = todayLocalISO();
+
+  var workModeToday = (state.workDayTypes && state.workDayTypes[todayIso]) || 'standard';
+  var workExtraToday = workModeExtra(workModeToday);
+  var waterToday = Math.max(0, Number(state.waterLog[todayIso])||0);
+  var waterGoal = Math.min(4600, Math.max(1500, Math.round((latest.weight||70)*30))) + workExtraToday.water;
+  var waterPct = Math.min(100, Math.round(waterToday/waterGoal*100));
+  html += '<section class="card water-card fade-up" id="water-card">'+
+    '<div class="food-header-row" style="align-items:center;margin-bottom:10px"><div class="card-title" style="margin:0;display:flex;align-items:center;gap:6px"><span style="color:#3B82F6;display:inline-flex">'+ICONS.drop+'</span>Pitný režim</div>'+
+      '<span class="stat-sub" style="margin-top:0">'+waterToday+' / '+waterGoal+' ml</span>'+
+    '</div>'+
+    '<div class="water-track"><div class="water-track-fill" style="width:'+waterPct+'%"></div></div>'+
+    '<div class="water-actions">'+
+      '<button type="button" class="btn-icon" id="water-minus-btn" aria-label="Ubrat 250 ml"'+(waterToday<=0?' disabled':'')+'>'+ICONS.minus+'</button>'+
+      '<button type="button" class="btn-secondary" id="water-plus-btn" style="flex:1;justify-content:center">'+ICONS.drop+' +250 ml</button>'+
+    '</div>'+
+  '</section>';
+
+  html += renderStreakCard(streaks);
+
+  html += renderFastingCard();
+
   var foodDay = state.selectedFoodDate || todayIso;
   var isToday = foodDay===todayIso;
   var dayFood = state.foodLog[foodDay] || [];
@@ -1908,7 +2252,10 @@ function renderMain(){
   var dayTypeInfo = DAY_TYPES.filter(function(t){ return t.key===dayType; })[0] || DAY_TYPES[0];
   var dayPlan = calcDayTypePlan(plan, dayType);
   var adj = dayType==='normal' ? calcAdjustedTarget(plan, state.foodLog, foodDay) : {target:dayPlan.target, adjustment:0, overage:0, pending:false};
-  var dayTarget = adj.target;
+  var workMode = (state.workDayTypes && state.workDayTypes[foodDay]) || 'standard';
+  var workModeInfo = WORK_DAY_TYPES.filter(function(t){ return t.key===workMode; })[0] || WORK_DAY_TYPES[0];
+  var workExtra = workModeExtra(workMode);
+  var dayTarget = adj.target + workExtra.kcal;
   var macroTargets = dayType==='normal' ? {proteinG:plan.proteinG, carbG:plan.carbG, fatG:plan.fatG} : {proteinG:dayPlan.proteinG, carbG:dayPlan.carbG, fatG:dayPlan.fatG};
   var remainingKcal = dayTarget - foodT.kcal;
   var remColor = remainingKcal < 0 ? COLORS.obese : COLORS.normal;
@@ -1919,6 +2266,32 @@ function renderMain(){
       }).join('')+
     '</div>'+
     '<div class="day-type-desc">'+esc(dayTypeInfo.desc)+'</div>'+
+  '</div>'+
+  '<div class="field" style="margin-bottom:12px"><span>Pracovní režim</span>'+
+    '<div class="seg day-type-seg" id="work-mode-seg">'+
+      WORK_DAY_TYPES.map(function(t){
+        return '<button type="button" class="seg-btn'+(workMode===t.key?' active':'')+'" data-work-mode="'+t.key+'" data-work-mode-day="'+foodDay+'">'+t.icon+' '+t.label+'</button>';
+      }).join('')+
+    '</div>'+
+    '<div class="day-type-desc">'+esc(workModeInfo.desc)+'</div>'+
+  '</div>';
+  var proteinTipHtml = '';
+  if(isToday){
+    var nowH = new Date().getHours();
+    var proteinTargetG = macroTargets.proteinG||0;
+    if(nowH>=18 && proteinTargetG>0 && foodT.protein < proteinTargetG*0.6){
+      proteinTipHtml = '<div class="cal-note" style="margin-top:0;margin-bottom:12px">'+ICONS.alert+' <strong>Bílkoviny jsou pozadu.</strong> Přidej k večeři tvaroh, kuřecí maso nebo jiný zdroj bílkovin.</div>';
+    }
+  }
+  var veggieCount = Math.max(0, Number((state.veggieLog||{})[foodDay])||0);
+  var veggieGoal = 3;
+  var veggieOk = veggieCount>=veggieGoal;
+  var veggieHtml = '<div class="food-header-row" style="align-items:center;margin:0 0 12px">'+
+    '<div style="display:flex;align-items:center;gap:6px;font-size:12.5px;color:'+(veggieOk?COLORS.normal:'var(--ink-muted)')+'">🥬 Zelenina/vláknina: <strong>'+veggieCount+' / '+veggieGoal+'</strong></div>'+
+    '<div style="display:flex;gap:6px">'+
+      (isToday ? '<button type="button" class="btn-icon subtle" id="veggie-minus-btn" aria-label="Ubrat porci"'+(veggieCount<=0?' disabled':'')+'>'+ICONS.minus+'</button>' : '')+
+      (isToday ? '<button type="button" class="btn-icon subtle" id="veggie-plus-btn" aria-label="Přidat porci zeleniny/vlákniny">'+ICONS.plus+'</button>' : '')+
+    '</div>'+
   '</div>';
   function miniBar(label, consumed, target, color){
     var pct = target>0 ? (consumed/target*100) : 0;
@@ -1941,6 +2314,7 @@ function renderMain(){
   html += '<section class="card fade-up">'+
     '<div class="food-header-row"><div class="card-title" style="margin:0">Stravování</div>'+
       '<div class="food-header-actions">'+
+        '<button class="btn-icon" id="favorites-btn" aria-label="Oblíbená jídla">'+ICONS.starFilled+'</button>'+
         '<button class="btn-icon" id="food-history-btn" aria-label="Historie jídel">'+ICONS.history+'</button>'+
         '<button class="btn-icon" id="ai-settings-btn" aria-label="Nastavení AI">'+ICONS.settings+'</button>'+
         '<button class="btn-secondary" id="open-add-food-btn">'+ICONS.plus+' Přidat jídlo</button>'+
@@ -1952,6 +2326,8 @@ function renderMain(){
       '<button class="btn-icon" id="food-day-next" aria-label="Další den"'+(isToday?' disabled':'')+'>'+ICONS.chevronRight+'</button>'+
     '</div>'+
     dayTypeSeg+
+    proteinTipHtml+
+    veggieHtml+
     '<div class="food-hero-row">'+
       '<div><div class="food-remaining-num" style="color:'+remColor+'">'+(remainingKcal<0?'−':'')+Math.abs(remainingKcal)+'</div><div class="food-remaining-unit">'+(remainingKcal<0?'KCAL NAD PLÁNEM':'KCAL ZBÝVÁ')+'</div><div class="food-item-kj" style="margin-top:3px">'+kcalToKj(Math.abs(remainingKcal))+' kJ</div></div>'+
       '<div style="text-align:right"><div class="food-mini-label">Snědeno</div><div class="food-remaining-num" style="font-size:22px">'+Math.round(foodT.kcal)+'</div><div class="food-remaining-unit">z '+dayTarget+' kcal</div><div class="food-item-kj" style="margin-top:3px">'+kcalToKj(foodT.kcal)+' z '+kcalToKj(dayTarget)+' kJ</div></div>'+
@@ -2035,6 +2411,9 @@ html += '<section class="card exercise-teaser fade-up">'+
   if(state.showFoodHistoryModal){
     html += renderFoodHistoryModal();
   }
+  if(state.showFavoritesModal){
+    html += renderFavoritesModal();
+  }
   if(state.showRecipeModal){
     html += renderRecipeModal();
   }
@@ -2096,6 +2475,7 @@ function renderAddFoodModal(){
 
   var modeTabs = isEditing ? '' : '<div class="seg" id="food-mode-seg" style="margin-bottom:14px">'+
     '<button type="button" class="seg-btn'+(mode==='text'?' active':'')+'" data-mode="text">Popis</button>'+
+    '<button type="button" class="seg-btn'+(mode==='quick'?' active':'')+'" data-mode="quick">'+ICONS.flame+' Rychle</button>'+
     '<button type="button" class="seg-btn'+(mode==='photo'?' active':'')+'" data-mode="photo">'+ICONS.camera+' Foto</button>'+
     '<button type="button" class="seg-btn'+(mode==='barcode'?' active':'')+'" data-mode="barcode">'+ICONS.barcode+' Kód</button>'+
     '<button type="button" class="seg-btn'+(mode==='alcohol'?' active':'')+'" data-mode="alcohol"><span style="display:inline-flex;vertical-align:-2px;margin-right:3px">'+ICONS.wine+'</span>Alkohol</button>'+
@@ -2132,6 +2512,10 @@ function renderAddFoodModal(){
       '</button>'+
       renderLookupButtons()+
       (state.foodAiError ? '<div class="form-error" style="margin-top:8px">'+ICONS.alert+' '+esc(state.foodAiError)+'</div>' : '');
+  } else if(mode==='quick'){
+    modeBody =
+      '<div class="quick-add-hint">'+ICONS.flame+' <span>Zadej rovnou kalorie a bílkoviny níže — bez zdlouhavého hledání. Sacharidy a tuky můžeš nechat prázdné.</span></div>'+
+      qtyUnitFields;
   } else if(mode==='photo'){
     modeBody =
       '<input type="file" accept="image/*" capture="environment" id="food-photo-input" style="display:none">'+
@@ -2246,6 +2630,66 @@ function renderFoodHistoryModal(){
     '<div class="modal" id="food-history-box">'+
       '<div class="modal-header"><div class="card-title" style="margin:0">Historie jídel</div><button class="btn-icon subtle" id="food-history-close-btn" aria-label="Zavřít">'+ICONS.x+'</button></div>'+
       body+
+    '</div>'+
+  '</div>';
+}
+
+function renderFavoritesModal(){
+  var favKeys = Object.keys(state.favoriteFoods||{});
+  var tplIds = Object.keys(state.mealTemplates||{});
+  var todayIso = todayLocalISO();
+  var todayGroups = {};
+  MEAL_TYPES.forEach(function(m){ todayGroups[m.key] = []; });
+  (state.foodLog[todayIso]||[]).forEach(function(f){
+    var key = normalizeMealType(f.mealType);
+    if(key && todayGroups[key]) todayGroups[key].push(f);
+  });
+  var saveOptions = MEAL_TYPES.filter(function(m){ return todayGroups[m.key].length>0; });
+
+  var tplHtml = !tplIds.length ? '<div class="food-empty">Zatím nemáš žádné uložené šablony.</div>' :
+    tplIds.map(function(id){
+      var tpl = state.mealTemplates[id];
+      var t = foodTotals(tpl.items);
+      var mi = mealTypeInfo(tpl.mealType);
+      return '<div class="tpl-card">'+
+        '<div class="tpl-card-info"><div class="tpl-card-name">'+mi.icon+' '+esc(tpl.name)+'</div>'+
+          '<div class="tpl-card-meta">'+tpl.items.length+' '+(tpl.items.length===1?'položka':'položek')+' · '+Math.round(t.kcal)+' kcal celkem</div></div>'+
+        '<button class="btn-secondary" data-apply-tpl="'+id+'" style="flex-shrink:0">'+ICONS.plus+' Přidat vše</button>'+
+        '<button class="btn-icon subtle" data-delete-tpl="'+id+'" aria-label="Smazat šablonu">'+ICONS.trash+'</button>'+
+      '</div>';
+    }).join('');
+
+  var saveTplHtml = !saveOptions.length ? '' :
+    '<div class="field" style="margin-top:4px"><span>Uložit dnešní jídlo jako šablonu</span>'+
+      '<div class="field-row">'+
+        '<select class="input" id="tpl-meal-select" style="flex:1">'+
+          saveOptions.map(function(m){ return '<option value="'+m.key+'">'+m.icon+' '+m.label+' ('+todayGroups[m.key].length+')</option>'; }).join('')+
+        '</select>'+
+      '</div>'+
+      '<div class="field-row" style="margin-top:8px">'+
+        '<input class="input" id="tpl-name-input" placeholder="např. Moje snídaně" style="flex:1">'+
+        '<button class="btn-primary" id="tpl-save-btn" style="flex-shrink:0">'+ICONS.check+' Uložit</button>'+
+      '</div>'+
+    '</div>';
+
+  var favHtml = !favKeys.length ? '<div class="food-empty">Zatím nemáš žádné oblíbené potraviny — klepni na hvězdičku u jídla v seznamu.</div>' :
+    favKeys.map(function(key){
+      var f = state.favoriteFoods[key];
+      return '<div class="tpl-card">'+
+        '<div class="tpl-card-info"><div class="tpl-card-name">'+esc(f.name)+'</div>'+
+          '<div class="tpl-card-meta">'+Math.round(f.kcal)+' kcal · B '+Math.round(f.protein)+' g · S '+Math.round(f.carbs)+' g · T '+Math.round(f.fat)+' g</div></div>'+
+        '<button class="btn-secondary" data-apply-fav="'+key+'" style="flex-shrink:0">'+ICONS.plus+'</button>'+
+        '<button class="fav-star-btn active" data-unfav-key="'+key+'" aria-label="Odebrat z oblíbených">'+ICONS.starFilled+'</button>'+
+      '</div>';
+    }).join('');
+
+  return '<div class="modal-overlay" id="favorites-overlay">'+
+    '<div class="modal modal-lg" id="favorites-box">'+
+      '<div class="modal-header"><div class="card-title" style="margin:0">Moje jídla</div><button class="btn-icon subtle" id="favorites-close-btn" aria-label="Zavřít">'+ICONS.x+'</button></div>'+
+      '<div class="modal-lg-body">'+
+        '<section class="card" style="margin-bottom:14px"><div class="card-title">Šablony jídel</div>'+tplHtml+saveTplHtml+'</section>'+
+        '<section class="card"><div class="card-title">Oblíbené potraviny</div>'+favHtml+'</section>'+
+      '</div>'+
     '</div>'+
   '</div>';
 }
@@ -2481,6 +2925,14 @@ function renderEditModal(profile){
   var confirmBlock = state.confirmReset ?
     '<div class="confirm-row"><span>Opravdu smazat profil i historii vah?</span><div class="row-btns"><button class="btn-ghost-danger" id="reset-confirm-btn">Ano, smazat</button><button class="btn-ghost" id="reset-cancel-btn">Zrušit</button></div></div>' :
     '<button class="btn-ghost-danger" id="reset-start-btn">Smazat všechna data</button>';
+  var backupBlock = '<div class="field" style="margin-top:14px"><span>Záloha dat</span>'+
+    '<div style="display:flex;gap:8px">'+
+      '<button type="button" class="btn-secondary" id="export-data-btn" style="flex:1">'+ICONS.download+' Export JSON</button>'+
+      '<button type="button" class="btn-secondary" id="import-data-btn" style="flex:1">'+ICONS.plus+' Import JSON</button>'+
+    '</div>'+
+    '<input type="file" id="import-data-file" accept="application/json" style="display:none">'+
+    '<div id="import-data-error"></div>'+
+  '</div>';
 
   return '<div class="modal-overlay" id="modal-overlay">'+
     '<div class="modal" id="modal-box">'+
@@ -2508,6 +2960,7 @@ function renderEditModal(profile){
         '<div id="ep-error"></div>'+
         '<button class="btn-primary" type="submit" style="width:100%">'+ICONS.check+' Uložit změny</button>'+
       '</form>'+
+      backupBlock+
       '<div class="danger-zone">'+confirmBlock+'</div>'+
     '</div>'+
   '</div>';
@@ -2600,10 +3053,41 @@ function attachMainEvents(){
   var dashAddFoodBtn = document.getElementById('dash-add-food-btn');
   if(dashAddFoodBtn) dashAddFoodBtn.addEventListener('click', openAddFoodModal);
 
+  var quickWeightForm = document.getElementById('quick-weight-form');
+  if(quickWeightForm) quickWeightForm.addEventListener('submit', function(e){
+    e.preventDefault();
+    var input = document.getElementById('quick-weight-input');
+    var weight = Number(input.value);
+    var err = document.getElementById('quick-weight-error');
+    err.innerHTML='';
+    if(!weight || weight<20 || weight>300){
+      err.innerHTML = '<div class="form-error">'+ICONS.alert+' Zadej platnou váhu v kg (20–300).</div>';
+      return;
+    }
+    var today = todayLocalISO();
+    var existing = state.entries.filter(function(en){ return en.date===today; })[0];
+    var list;
+    if(existing){
+      list = state.entries.map(function(en){ return en.id===existing.id ? Object.assign({}, en, {weight:weight}) : en; });
+    } else {
+      list = state.entries.concat([{id:uid(), date:today, weight:weight}]);
+    }
+    saveEntries(list);
+    render();
+  });
+
+  var dashChartExpandBtn = document.getElementById('dash-chart-expand-btn');
+  if(dashChartExpandBtn) dashChartExpandBtn.addEventListener('click', function(){ state.showAboutMeModal=true; render(); });
+
   var dashBmiCard = document.getElementById('dash-bmi-card');
   if(dashBmiCard) dashBmiCard.addEventListener('click', function(){ state.showBmiModal=true; render(); });
   var dashWeightCard = document.getElementById('dash-weight-card');
   if(dashWeightCard) dashWeightCard.addEventListener('click', function(){ state.showAboutMeModal=true; render(); });
+
+  var waterPlusBtn = document.getElementById('water-plus-btn');
+  if(waterPlusBtn) waterPlusBtn.addEventListener('click', function(){ addWater(250, todayLocalISO()); render(); });
+  var waterMinusBtn = document.getElementById('water-minus-btn');
+  if(waterMinusBtn) waterMinusBtn.addEventListener('click', function(){ addWater(-250, todayLocalISO()); render(); });
 
   document.querySelectorAll('[data-meal-add]').forEach(function(btn){
     btn.addEventListener('click', function(){
@@ -2613,6 +3097,17 @@ function attachMainEvents(){
       state.foodInputMode='text'; state.foodPhoto=null; state.barcodePhoto=null;
       state.alcoholSearchQuery=''; state.alcoholAddedName='';
       state.editingFoodId=null; state.editingFoodDay=null;
+      render();
+    });
+  });
+
+  document.querySelectorAll('[data-fav-food-id]').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      var id = btn.getAttribute('data-fav-food-id');
+      var day = btn.getAttribute('data-fav-food-day');
+      var entry = (state.foodLog[day]||[]).filter(function(f){ return f.id===id; })[0];
+      if(!entry) return;
+      toggleFavoriteFood(entry);
       render();
     });
   });
@@ -2644,6 +3139,50 @@ function attachMainEvents(){
       saveDayTypes(dt);
       render();
     });
+  });
+
+  document.querySelectorAll('[data-work-mode]').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      var day = btn.getAttribute('data-work-mode-day');
+      var val = btn.getAttribute('data-work-mode');
+      var wt = Object.assign({}, state.workDayTypes);
+      if(val==='standard') delete wt[day]; else wt[day] = val;
+      saveWorkDayTypes(wt);
+      render();
+    });
+  });
+
+  var veggiePlusBtn = document.getElementById('veggie-plus-btn');
+  if(veggiePlusBtn) veggiePlusBtn.addEventListener('click', function(){ addVeggie(todayLocalISO(), 1); render(); });
+  var veggieMinusBtn = document.getElementById('veggie-minus-btn');
+  if(veggieMinusBtn) veggieMinusBtn.addEventListener('click', function(){ addVeggie(todayLocalISO(), -1); render(); });
+
+  var fastingSetupBtn = document.getElementById('fasting-setup-btn');
+  if(fastingSetupBtn) fastingSetupBtn.addEventListener('click', function(){ state.showFastingEdit=true; render(); });
+  var fastingCancelBtn = document.getElementById('fasting-cancel-btn');
+  if(fastingCancelBtn) fastingCancelBtn.addEventListener('click', function(){ state.showFastingEdit=false; render(); });
+  var fastingDisableBtn = document.getElementById('fasting-disable-btn');
+  if(fastingDisableBtn) fastingDisableBtn.addEventListener('click', function(){
+    saveFastingConfig(Object.assign({}, state.fastingConfig, {enabled:false}));
+    state.showFastingEdit=false;
+    render();
+  });
+  var fastingForm = document.getElementById('fasting-form');
+  if(fastingForm) fastingForm.addEventListener('submit', function(e){
+    e.preventDefault();
+    var startRaw = document.getElementById('fasting-eat-start').value;
+    var endRaw = document.getElementById('fasting-eat-end').value;
+    var errEl = document.getElementById('fasting-error');
+    errEl.innerHTML='';
+    var sm = /^(\d{1,2}):(\d{2})$/.exec(startRaw||'');
+    var em = /^(\d{1,2}):(\d{2})$/.exec(endRaw||'');
+    if(!sm || !em){ errEl.innerHTML='<div class="form-error">'+ICONS.alert+' Zadej platný čas začátku i konce okna.</div>'; return; }
+    var startMin = Number(sm[1])*60+Number(sm[2]);
+    var endMin = Number(em[1])*60+Number(em[2]);
+    if(endMin<=startMin){ errEl.innerHTML='<div class="form-error">'+ICONS.alert+' Konec okna musí být později než začátek (v rámci jednoho dne).</div>'; return; }
+    saveFastingConfig({enabled:true, eatStart:startMin, eatEnd:endMin});
+    state.showFastingEdit=false;
+    render();
   });
 
   document.querySelectorAll('[data-cal-adjust]').forEach(function(btn){
@@ -2682,6 +3221,61 @@ function attachMainEvents(){
     foodHistoryOverlay.addEventListener('click', function(e){ if(e.target===foodHistoryOverlay){ state.showFoodHistoryModal=false; render(); } });
     var foodHistoryCloseBtn = document.getElementById('food-history-close-btn');
     if(foodHistoryCloseBtn) foodHistoryCloseBtn.addEventListener('click', function(){ state.showFoodHistoryModal=false; render(); });
+  }
+
+  var favoritesBtn = document.getElementById('favorites-btn');
+  if(favoritesBtn) favoritesBtn.addEventListener('click', function(){ state.showFavoritesModal=true; render(); });
+
+  var favoritesOverlay = document.getElementById('favorites-overlay');
+  if(favoritesOverlay){
+    favoritesOverlay.addEventListener('click', function(e){ if(e.target===favoritesOverlay){ state.showFavoritesModal=false; render(); } });
+    var favoritesCloseBtn = document.getElementById('favorites-close-btn');
+    if(favoritesCloseBtn) favoritesCloseBtn.addEventListener('click', function(){ state.showFavoritesModal=false; render(); });
+
+    document.querySelectorAll('[data-apply-tpl]').forEach(function(btn){
+      btn.addEventListener('click', function(){
+        applyMealTemplate(btn.getAttribute('data-apply-tpl'), state.selectedFoodDate || todayLocalISO());
+        state.showFavoritesModal=false;
+        render();
+      });
+    });
+    document.querySelectorAll('[data-delete-tpl]').forEach(function(btn){
+      btn.addEventListener('click', function(){
+        deleteMealTemplate(btn.getAttribute('data-delete-tpl'));
+        render();
+      });
+    });
+    document.querySelectorAll('[data-apply-fav]').forEach(function(btn){
+      btn.addEventListener('click', function(){
+        var key = btn.getAttribute('data-apply-fav');
+        var f = state.favoriteFoods[key];
+        if(!f) return;
+        var day = state.selectedFoodDate || todayLocalISO();
+        persistFoodEntry(Object.assign({}, f, {mealType: guessMealType()}), day);
+        state.showFavoritesModal=false;
+        render();
+      });
+    });
+    document.querySelectorAll('[data-unfav-key]').forEach(function(btn){
+      btn.addEventListener('click', function(){
+        var key = btn.getAttribute('data-unfav-key');
+        var ff = Object.assign({}, state.favoriteFoods);
+        delete ff[key];
+        saveFavoriteFoods(ff);
+        render();
+      });
+    });
+    var tplSaveBtn = document.getElementById('tpl-save-btn');
+    if(tplSaveBtn) tplSaveBtn.addEventListener('click', function(){
+      var mealKey = document.getElementById('tpl-meal-select').value;
+      var name = document.getElementById('tpl-name-input').value.trim();
+      if(!name) return;
+      var todayIso = todayLocalISO();
+      var items = (state.foodLog[todayIso]||[]).filter(function(f){ return normalizeMealType(f.mealType)===mealKey; });
+      if(!items.length) return;
+      saveMealAsTemplate(name, items, mealKey);
+      render();
+    });
   }
 
   var recipeBtn = document.getElementById('food-recipe-btn');
@@ -2944,6 +3538,9 @@ function attachMainEvents(){
         state.foodInputMode = btn.getAttribute('data-mode');
         state.foodAiError='';
         state.alcoholAddedName='';
+        if(state.foodInputMode==='quick' && !(state.foodDraft && state.foodDraft.name)){
+          state.foodDraft = Object.assign({}, state.foodDraft, {name:'Rychlý záznam'});
+        }
         render();
       });
     });
@@ -3612,6 +4209,35 @@ function attachMainEvents(){
       render();
     });
 
+    var exportBtn = document.getElementById('export-data-btn');
+    if(exportBtn) exportBtn.addEventListener('click', function(){ exportAllData(); });
+
+    var importBtn = document.getElementById('import-data-btn');
+    var importFile = document.getElementById('import-data-file');
+    if(importBtn && importFile){
+      importBtn.addEventListener('click', function(){ importFile.click(); });
+      importFile.addEventListener('change', function(){
+        var file = importFile.files && importFile.files[0];
+        var errEl = document.getElementById('import-data-error');
+        if(errEl) errEl.innerHTML='';
+        if(!file) return;
+        if(!window.confirm('Import přepíše aktuální data v aplikaci uloženými ze zálohy. Pokračovat?')){
+          importFile.value='';
+          return;
+        }
+        importAllDataFromFile(file, function(err){
+          importFile.value='';
+          if(err){
+            if(errEl) errEl.innerHTML = '<div class="form-error">'+ICONS.alert+' Import se nezdařil, zkontroluj soubor.</div>';
+            return;
+          }
+          loadState();
+          state.editingProfile=false;
+          render();
+        });
+      });
+    }
+
     var resetStart = document.getElementById('reset-start-btn');
     if(resetStart) resetStart.addEventListener('click', function(){ state.confirmReset=true; render(); });
     var resetCancel = document.getElementById('reset-cancel-btn');
@@ -3694,6 +4320,18 @@ function tickLiveWidgets(){
     if(soberEl) soberEl.textContent = alc.soberAt ? formatTimeHM(alc.soberAt) : '—';
     if(labelEl) labelEl.textContent = alc.soberAt ? 'orientační čas' : 'nemáš v krvi alkohol';
     if(headerLabelEl) headerLabelEl.textContent = alc.soberAt ? 'Střízlivý(á) od' : 'Stav';
+  }
+
+  var fastingRingEl = document.getElementById('fasting-ring');
+  if(fastingRingEl && state.fastingConfig && state.fastingConfig.enabled){
+    var fs = fastingStatus(state.fastingConfig);
+    if(fs){
+      var color = fs.phase==='eating' ? COLORS.accent : COLORS.under;
+      var deg = Math.max(0, Math.min(360, fs.pct*3.6));
+      fastingRingEl.style.background = 'conic-gradient('+color+' '+deg+'deg, var(--line) 0)';
+      var remEl = document.getElementById('fasting-remaining');
+      if(remEl){ remEl.textContent = durationToHM(fs.remaining); remEl.style.color = color; }
+    }
   }
 }
 setInterval(tickLiveWidgets, 1000);
