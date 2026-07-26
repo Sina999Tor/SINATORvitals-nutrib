@@ -317,8 +317,9 @@
   @keyframes spin{to{transform:rotate(360deg);}}
   .ai-result-card{background:var(--surface-2);border:1px solid var(--line);border-radius:16px;padding:14px;margin-top:12px;}
   .ai-result-title{font-size:13px;color:var(--ink-muted);margin-bottom:8px;}
-  .food-header-row{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:14px;}
-  .food-header-actions{display:flex;gap:8px;}
+  .food-header-row{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:14px;flex-wrap:wrap;row-gap:10px;}
+  .food-header-actions{display:flex;gap:8px;flex-wrap:wrap;align-items:center;flex:1 1 100%;}
+  .food-header-actions .btn-secondary{flex:1 1 auto;justify-content:center;white-space:nowrap;}
   .food-day-nav{display:flex;align-items:center;justify-content:center;gap:14px;margin-bottom:14px;}
   .food-day-label{font-size:13.5px;font-weight:700;min-width:110px;text-align:center;}
   #food-day-next:disabled{opacity:.3;cursor:not-allowed;}
