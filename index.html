@@ -489,7 +489,7 @@ var EXERCISES = {
 var state = { profile:null, entries:[], saveError:'', editingProfile:false, confirmReset:false, showExerciseModal:false, exerciseTab:'upper', exerciseDetail:null, showBmiModal:false, showAboutMeModal:false, canInstall:false, showIosInstallHint:false,
   foodLog:{}, showAddFoodModal:false, foodDraft:null, foodAiLoading:false, foodAiError:'', showAiSettingsModal:false, aiKeys:{gemini:'',groq:'',openrouter:''}, showFoodHistoryModal:false, selectedFoodDate:null,
   foodLookupLoading:null, foodLookupError:'', foodLookupNote:'',
-  foodInputMode:'text', foodPhoto:null, barcodePhoto:null, knownFoods:{}, showAlcoholModal:false, alcoholSearchQuery:'', alcoholAddedName:'', addFoodMealType:null, editingFoodId:null, editingFoodDay:null, calAdjustChoices:{}, dayTypes:{}, veggieLog:{}, workDayTypes:{}, fastingConfig:{enabled:false, eatStart:720, eatEnd:1200}, showFastingEdit:false, streakCelebrated:{weightStreak:0, calorieStreak:0, weightMin:null}, showNotifModal:false,
+  foodInputMode:'text', foodPhoto:null, barcodePhoto:null, knownFoods:{}, showAlcoholModal:false, alcoholSearchQuery:'', alcoholAddedName:'', addFoodMealType:null, editingFoodId:null, editingFoodDay:null, calAdjustChoices:{}, dayTypes:{}, workDayTypes:{}, fastingConfig:{enabled:false, eatStart:720, eatEnd:1200}, showFastingEdit:false, streakCelebrated:{weightStreak:0, calorieStreak:0, weightMin:null}, showNotifModal:false,
   waterLog:{}, favoriteFoods:{}, mealTemplates:{}, showFavoritesModal:false,
   showRecipeModal:false, recipeDraft:null };
 
@@ -504,7 +504,6 @@ function loadState(){
   try{ var wl = JSON.parse(localStorage.getItem('vitals_water_log')||'{}'); state.waterLog = (wl && typeof wl==='object')?wl:{}; }catch(e){ state.waterLog={}; }
   try{ var ff = JSON.parse(localStorage.getItem('vitals_favorite_foods')||'{}'); state.favoriteFoods = (ff && typeof ff==='object')?ff:{}; }catch(e){ state.favoriteFoods={}; }
   try{ var mt = JSON.parse(localStorage.getItem('vitals_meal_templates')||'{}'); state.mealTemplates = (mt && typeof mt==='object')?mt:{}; }catch(e){ state.mealTemplates={}; }
-  try{ var vg = JSON.parse(localStorage.getItem('vitals_veggie_log')||'{}'); state.veggieLog = (vg && typeof vg==='object')?vg:{}; }catch(e){ state.veggieLog={}; }
   try{ var wd = JSON.parse(localStorage.getItem('vitals_work_day_types')||'{}'); state.workDayTypes = (wd && typeof wd==='object')?wd:{}; }catch(e){ state.workDayTypes={}; }
   try{ var fc = JSON.parse(localStorage.getItem('vitals_fasting_config')||'null'); state.fastingConfig = (fc && typeof fc==='object') ? {enabled:!!fc.enabled, eatStart:Number(fc.eatStart)||720, eatEnd:Number(fc.eatEnd)||1200} : {enabled:false, eatStart:720, eatEnd:1200}; }catch(e){ state.fastingConfig={enabled:false, eatStart:720, eatEnd:1200}; }
   try{ var sc = JSON.parse(localStorage.getItem('vitals_streak_celebrated')||'null'); state.streakCelebrated = (sc && typeof sc==='object') ? {weightStreak:Number(sc.weightStreak)||0, calorieStreak:Number(sc.calorieStreak)||0, weightMin:(sc.weightMin==null?null:Number(sc.weightMin))} : {weightStreak:0, calorieStreak:0, weightMin:null}; }catch(e){ state.streakCelebrated={weightStreak:0, calorieStreak:0, weightMin:null}; }
@@ -567,17 +566,6 @@ function applyMealTemplate(id, day){
   tpl.items.forEach(function(it){
     persistFoodEntry(Object.assign({}, it, {mealType:tpl.mealType}), day);
   });
-}
-function saveVeggieLog(vl){
-  state.veggieLog = vl;
-  try{ localStorage.setItem('vitals_veggie_log', JSON.stringify(vl)); }catch(e){}
-}
-function addVeggie(day, delta){
-  var vl = Object.assign({}, state.veggieLog);
-  var cur = Math.max(0, Number(vl[day])||0);
-  var next = Math.max(0, cur+delta);
-  if(next<=0) delete vl[day]; else vl[day] = next;
-  saveVeggieLog(vl);
 }
 function saveWorkDayTypes(wt){
   state.workDayTypes = wt;
@@ -765,7 +753,7 @@ function collectAllData(){
     profile: state.profile, entries: state.entries, foodLog: state.foodLog,
     dayTypes: state.dayTypes, workDayTypes: state.workDayTypes, waterLog: state.waterLog,
     favoriteFoods: state.favoriteFoods, mealTemplates: state.mealTemplates,
-    knownFoods: state.knownFoods, calAdjustChoices: state.calAdjustChoices, veggieLog: state.veggieLog, fastingConfig: state.fastingConfig, notifConfig: state.notifConfig
+    knownFoods: state.knownFoods, calAdjustChoices: state.calAdjustChoices, fastingConfig: state.fastingConfig, notifConfig: state.notifConfig
   };
 }
 function exportAllData(){
@@ -792,7 +780,6 @@ function importAllDataFromFile(file, cb){
       if(data.mealTemplates && typeof data.mealTemplates==='object') saveMealTemplates(data.mealTemplates);
       if(data.knownFoods && typeof data.knownFoods==='object') saveKnownFoods(data.knownFoods);
       if(data.calAdjustChoices && typeof data.calAdjustChoices==='object') saveCalAdjustChoices(data.calAdjustChoices);
-      if(data.veggieLog && typeof data.veggieLog==='object') saveVeggieLog(data.veggieLog);
       if(data.fastingConfig && typeof data.fastingConfig==='object') saveFastingConfig({enabled:!!data.fastingConfig.enabled, eatStart:Number(data.fastingConfig.eatStart)||720, eatEnd:Number(data.fastingConfig.eatEnd)||1200});
       if(data.notifConfig && typeof data.notifConfig==='object') saveNotifConfig(Object.assign({enabled:false, waterEnabled:true, waterIntervalHours:3, waterStart:'08:00', waterEnd:'22:00', eveningEnabled:true, eveningTime:'21:00', morningEnabled:true, morningTime:'07:00'}, data.notifConfig));
       cb(null);
@@ -2363,16 +2350,7 @@ function renderMain(){
       proteinTipHtml = '<div class="cal-note" style="margin-top:0;margin-bottom:12px">'+ICONS.alert+' <strong>Bílkoviny jsou pozadu.</strong> Přidej k večeři tvaroh, kuřecí maso nebo jiný zdroj bílkovin.</div>';
     }
   }
-  var veggieCount = Math.max(0, Number((state.veggieLog||{})[foodDay])||0);
-  var veggieGoal = 3;
-  var veggieOk = veggieCount>=veggieGoal;
-  var veggieHtml = '<div class="food-header-row" style="align-items:center;margin:0 0 12px">'+
-    '<div style="display:flex;align-items:center;gap:6px;font-size:12.5px;color:'+(veggieOk?COLORS.normal:'var(--ink-muted)')+'">🥬 Zelenina/vláknina: <strong>'+veggieCount+' / '+veggieGoal+'</strong></div>'+
-    '<div style="display:flex;gap:6px">'+
-      (isToday ? '<button type="button" class="btn-icon subtle" id="veggie-minus-btn" aria-label="Ubrat porci"'+(veggieCount<=0?' disabled':'')+'>'+ICONS.minus+'</button>' : '')+
-      (isToday ? '<button type="button" class="btn-icon subtle" id="veggie-plus-btn" aria-label="Přidat porci zeleniny/vlákniny">'+ICONS.plus+'</button>' : '')+
-    '</div>'+
-  '</div>';
+
   function miniBar(label, consumed, target, color){
     var pct = target>0 ? (consumed/target*100) : 0;
     var mainPct = Math.max(0, Math.min(100, pct));
@@ -2407,7 +2385,6 @@ function renderMain(){
     '</div>'+
     dayTypeSeg+
     proteinTipHtml+
-    veggieHtml+
     '<div class="food-hero-row">'+
       '<div><div class="food-remaining-num" style="color:'+remColor+'">'+(remainingKcal<0?'−':'')+Math.abs(remainingKcal)+'</div><div class="food-remaining-unit">'+(remainingKcal<0?'KCAL NAD PLÁNEM':'KCAL ZBÝVÁ')+'</div><div class="food-item-kj" style="margin-top:3px">'+kcalToKj(Math.abs(remainingKcal))+' kJ</div></div>'+
       '<div style="text-align:right"><div class="food-mini-label">Snědeno</div><div class="food-remaining-num" style="font-size:22px">'+Math.round(foodT.kcal)+'</div><div class="food-remaining-unit">z '+dayTarget+' kcal</div><div class="food-item-kj" style="margin-top:3px">'+kcalToKj(foodT.kcal)+' z '+kcalToKj(dayTarget)+' kJ</div></div>'+
@@ -3345,10 +3322,7 @@ function attachMainEvents(){
     });
   });
 
-  var veggiePlusBtn = document.getElementById('veggie-plus-btn');
-  if(veggiePlusBtn) veggiePlusBtn.addEventListener('click', function(){ addVeggie(todayLocalISO(), 1); render(); });
-  var veggieMinusBtn = document.getElementById('veggie-minus-btn');
-  if(veggieMinusBtn) veggieMinusBtn.addEventListener('click', function(){ addVeggie(todayLocalISO(), -1); render(); });
+
 
   var fastingSetupBtn = document.getElementById('fasting-setup-btn');
   if(fastingSetupBtn) fastingSetupBtn.addEventListener('click', function(){ state.showFastingEdit=true; render(); });
